@@ -55,11 +55,11 @@ public class SimplyBetterCoreServer implements DedicatedServerModInitializer {
         warpCrudManager = new WarpCrudManager(DB);
         LOGGER.info("[{}] Modules initialized", MOD_ID);
 
-        try {
-            runWarpCrudSmokeTest();
-        } catch (Exception e) {
-            LOGGER.error("[{}] Smoke test failed: {}", MOD_ID, e.getMessage(), e);
-        }
+//        try {
+//            runWarpCrudSmokeTest();
+//        } catch (Exception e) {
+//            LOGGER.error("[{}] Smoke test failed: {}", MOD_ID, e.getMessage(), e);
+//        }
     }
 
     private void runWarpCrudSmokeTest() {
