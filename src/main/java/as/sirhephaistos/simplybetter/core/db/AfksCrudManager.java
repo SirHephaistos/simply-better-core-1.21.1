@@ -1,5 +1,6 @@
 package as.sirhephaistos.simplybetter.core.db;
 
+import as.sirhephaistos.simplybetter.library.AccountDTO;
 import as.sirhephaistos.simplybetter.library.AfkDTO;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -9,6 +10,47 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * <h1><img src="https://docs.godsmg.com/~gitbook/image?url=https%3A%2F%2F602320278-files.gitbook.io%2F%7E%2Ffiles%2Fv0%2Fb%2Fgitbook-x-prod.appspot.com%2Fo%2Forganizations%252FpIa3Cyk1OAYwYiLI3sxf%252Fsites%252Fsite_hKBWF%252Ficon%252FF3ga5TrIrIMXtWecHo3z%252FChatGPT%2520Image%252025%2520oct.%25202025%252C%252017_44_38.png%3Falt%3Dmedia%26token%3D8c3f45e4-ed6f-47ab-a4ab-474d24fa3bb3&width=32&dpr=1&quality=100&sign=2c456f01&sv=2"></img>
+ * &nbsp;CRUD manager for {@link AfkDTO}
+ * <img src="https://docs-sbs.godsmg.com/~gitbook/image?url=https%3A%2F%2F655127117-files.gitbook.io%2F%7E%2Ffiles%2Fv0%2Fb%2Fgitbook-x-prod.appspot.com%2Fo%2Forganizations%252FpIa3Cyk1OAYwYiLI3sxf%252Fsites%252Fsite_ofAiW%252Ficon%252F9SRBPTo3OKBsw5DvBwL3%252FChatGPT%2520Image%252025%2520oct.%25202025%252C%252000_07_28.png%3Falt%3Dmedia%26token%3D396dda36-5693-4638-b53e-59bf0770f309&width=32&dpr=1&quality=100&sign=55c114e6&sv=2"></img> </h1>
+ * <h2>Create Methods</h2>
+ * <ul>
+ *     <li>{@link #createAfk}:</br>
+ *         Create a new AFK entry for a player. And returns the created {@link AfkDTO}.</li>
+ * </ul>
+ * <h2>Read Methods</h2>
+ * <ul>
+ *     <li>{@link #getAfkByPlayerUuid}:</br>
+ *         Get AFK by player UUID. And returns an {@link Optional} containing {@link AfkDTO} if found, empty otherwise.</li>
+ *     <li>{@link #getAllAfks}:</br>
+ *         Get all AFK entries. And returns a {@link List} of {@link AfkDTO}.</li>
+ *     <li>{@link #getAllAfksPaged}:</br>
+ *         Get all AFK entries with pagination. And returns a {@link List} of {@link AfkDTO}.</li>
+ *     <li>{@link #existsAfkForPlayer}:</br>
+ *         Check if an AFK entry exists for a player. And returns a boolean.</li>
+ * </ul>
+ * <h2>Update Methods</h2>
+ * <ul>
+ *     <li>{@link #updateAfk}:</br>
+ *         Update both since and message. And returns the updated {@link AfkDTO}.</li>
+ *     <li>{@link #setAfkMessage}:</br>
+ *         Update only message. And returns the updated {@link AfkDTO}.</li>
+ *     <li>{@link #setAfkSince}:</br>
+ *         Update only since. And returns the updated {@link AfkDTO}.</li>
+ * </ul>
+ * <h2>Delete Methods</h2>
+ * <ul>
+ *     <li>{@link #deleteAfkByPlayerUuid}:</br>
+ *         Delete AFK entry by player UUID.</li>
+ * </ul>
+ *
+ *<h3>General Information</h3>
+ * @codeBaseStatus Complete
+ * @testingStatus AwaitingJUnitTests
+ * @author Sirhephaistos
+ * @version 1.0
+ */
 public final class AfksCrudManager {
     private final DatabaseManager db;
 
