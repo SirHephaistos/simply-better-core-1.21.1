@@ -1,9 +1,10 @@
 package as.sirhephaistos.simplybetter.library;
 
+import org.jetbrains.annotations.NotNull;
+
 // sb_accounts
 public record AccountDTO(
-        String playerUuid,
+        @NotNull String playerUuid,
         long balance,
-        String updatedAt
-) {
-}
+        @NotNull String updatedAt // nullable
+) {}

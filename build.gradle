@@ -42,9 +42,9 @@ dependencies {
     compileOnly 'org.projectlombok:lombok:1.18.32'
     annotationProcessor 'org.projectlombok:lombok:1.18.32'
     // add JDBC:SQLite for database handling
-    include(modImplementation('org.xerial:sqlite-jdbc:3.50.3.0'))
-
-
+    include(implementation('org.xerial:sqlite-jdbc:3.50.3.0'))
+    implementation 'org.xerial:sqlite-jdbc:3.45.2.0'
+    runtimeOnly 'org.xerial:sqlite-jdbc:3.45.2.0'
 }
 
 processResources {
@@ -76,6 +76,7 @@ jar {
 		rename { "${it}_${inputs.properties.archivesName}"}
 	}
 }
+
 
 // configure the maven publication
 publishing {

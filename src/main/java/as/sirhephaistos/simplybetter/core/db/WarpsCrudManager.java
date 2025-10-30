@@ -5,19 +5,19 @@ import as.sirhephaistos.simplybetter.library.WarpDTO;
 import org.jetbrains.annotations.NotNull;
 
 import java.sql.*;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-public final class WarpCrudManager {
+public final class WarpsCrudManager {
     private final DatabaseManager db; // provides connections
 
-    public WarpCrudManager(DatabaseManager db) {
+    public WarpsCrudManager(DatabaseManager db) {
         this.db = db;
     }
 
-    /** Helper to construct WarpDTO from ResultSet
+    /**
+     * Helper to construct WarpDTO from ResultSet
      *
      * @param rs ResultSet positioned at a valid row
      * @return WarpDTO constructed from the current row
@@ -42,34 +42,36 @@ public final class WarpCrudManager {
         return warp;
     }
 
-    /** Create a new warp */
+    /**
+     * Create a new warp
+     */
     public WarpDTO createWarp(String name, String createdByUuid, @NotNull PositionDTO position) {
         final String insertPositionSql = """
-        INSERT INTO sb_positions (dimension_id, x, y, z, orientation_yaw, orientation_pitch)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """;
+                INSERT INTO sb_positions (dimension_id, x, y, z, orientation_yaw, orientation_pitch)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """;
 
         final String insertWarpSql = """
-        INSERT INTO sb_warps (name, created_by_uuid, position_id)
-        VALUES (?, ?, ?)
-        """;
+                INSERT INTO sb_warps (name, created_by_uuid, position_id)
+                VALUES (?, ?, ?)
+                """;
 
         final String selectByIdSql = """
-        SELECT
-            w.id                      AS w_id,
-            w.name                    AS w_name,
-            w.created_by_uuid         AS w_created_by_uuid,
-            w.created_at              AS w_created_at,
-            p.dimension_id            AS p_dimension_id,
-            p.x                       AS p_x,
-            p.y                       AS p_y,
-            p.z                       AS p_z,
-            p.orientation_yaw         AS p_yaw,
-            p.orientation_pitch       AS p_pitch
-        FROM sb_warps w
-        JOIN sb_positions p ON w.position_id = p.id
-        WHERE w.id = ?
-        """;
+                SELECT
+                    w.id                      AS w_id,
+                    w.name                    AS w_name,
+                    w.created_by_uuid         AS w_created_by_uuid,
+                    w.created_at              AS w_created_at,
+                    p.dimension_id            AS p_dimension_id,
+                    p.x                       AS p_x,
+                    p.y                       AS p_y,
+                    p.z                       AS p_z,
+                    p.orientation_yaw         AS p_yaw,
+                    p.orientation_pitch       AS p_pitch
+                FROM sb_warps w
+                JOIN sb_positions p ON w.position_id = p.id
+                WHERE w.id = ?
+                """;
 
         try (Connection conn = db.getConnection()) {
             conn.setAutoCommit(false);
@@ -138,27 +140,29 @@ public final class WarpCrudManager {
         }
     }
 
-    /** Get a warp by unique name
+    /**
+     * Get a warp by unique name
+     *
      * @param name Warp name
      * @return Optional of WarpDTO if found, else empty
      */
     public Optional<WarpDTO> getWarpByName(String name) {
         final String selectByNameSql = """
-        SELECT
-            w.id                      AS w_id,
-            w.name                    AS w_name,
-            w.created_by_uuid         AS w_created_by_uuid,
-            w.created_at              AS w_created_at,
-            p.dimension_id            AS p_dimension_id,
-            p.x                       AS p_x,
-            p.y                       AS p_y,
-            p.z                       AS p_z,
-            p.orientation_yaw         AS p_yaw,
-            p.orientation_pitch       AS p_pitch
-        FROM sb_warps w
-        JOIN sb_positions p ON w.position_id = p.id
-        WHERE w.name = ?
-        """;
+                SELECT
+                    w.id                      AS w_id,
+                    w.name                    AS w_name,
+                    w.created_by_uuid         AS w_created_by_uuid,
+                    w.created_at              AS w_created_at,
+                    p.dimension_id            AS p_dimension_id,
+                    p.x                       AS p_x,
+                    p.y                       AS p_y,
+                    p.z                       AS p_z,
+                    p.orientation_yaw         AS p_yaw,
+                    p.orientation_pitch       AS p_pitch
+                FROM sb_warps w
+                JOIN sb_positions p ON w.position_id = p.id
+                WHERE w.name = ?
+                """;
 
         try (Connection conn = db.getConnection();
              PreparedStatement stmt = conn.prepareStatement(selectByNameSql)) {
@@ -174,28 +178,30 @@ public final class WarpCrudManager {
         }
     }
 
-    /** List warps by creator UUID
+    /**
+     * List warps by creator UUID
      *
      * @param createdBy Creator UUID
      * @return List of WarpDTOs created by the specified UUID
-     * */
+     *
+     */
     public List<WarpDTO> getWarpsByCreator(String createdBy) {
         final String selectByCreatorSql = """
-        SELECT
-            w.id                      AS w_id,
-            w.name                    AS w_name,
-            w.created_by_uuid         AS w_created_by_uuid,
-            w.created_at              AS w_created_at,
-            p.dimension_id            AS p_dimension_id,
-            p.x                       AS p_x,
-            p.y                       AS p_y,
-            p.z                       AS p_z,
-            p.orientation_yaw         AS p_yaw,
-            p.orientation_pitch       AS p_pitch
-        FROM sb_warps w
-        JOIN sb_positions p ON w.position_id = p.id
-        WHERE w.created_by_uuid = ?
-        """;
+                SELECT
+                    w.id                      AS w_id,
+                    w.name                    AS w_name,
+                    w.created_by_uuid         AS w_created_by_uuid,
+                    w.created_at              AS w_created_at,
+                    p.dimension_id            AS p_dimension_id,
+                    p.x                       AS p_x,
+                    p.y                       AS p_y,
+                    p.z                       AS p_z,
+                    p.orientation_yaw         AS p_yaw,
+                    p.orientation_pitch       AS p_pitch
+                FROM sb_warps w
+                JOIN sb_positions p ON w.position_id = p.id
+                WHERE w.created_by_uuid = ?
+                """;
 
         try (Connection conn = db.getConnection();
              PreparedStatement stmt = conn.prepareStatement(selectByCreatorSql)) {
@@ -213,23 +219,25 @@ public final class WarpCrudManager {
     }
 
 
-    /** List all warps */
+    /**
+     * List all warps
+     */
     public List<WarpDTO> getAllWarps() {
         final String selectAllSql = """
-        SELECT
-            w.id                      AS w_id,
-            w.name                    AS w_name,
-            w.created_by_uuid         AS w_created_by_uuid,
-            w.created_at              AS w_created_at,
-            p.dimension_id            AS p_dimension_id,
-            p.x                       AS p_x,
-            p.y                       AS p_y,
-            p.z                       AS p_z,
-            p.orientation_yaw         AS p_yaw,
-            p.orientation_pitch       AS p_pitch
-        FROM sb_warps w
-        JOIN sb_positions p ON w.position_id = p.id
-        """;
+                SELECT
+                    w.id                      AS w_id,
+                    w.name                    AS w_name,
+                    w.created_by_uuid         AS w_created_by_uuid,
+                    w.created_at              AS w_created_at,
+                    p.dimension_id            AS p_dimension_id,
+                    p.x                       AS p_x,
+                    p.y                       AS p_y,
+                    p.z                       AS p_z,
+                    p.orientation_yaw         AS p_yaw,
+                    p.orientation_pitch       AS p_pitch
+                FROM sb_warps w
+                JOIN sb_positions p ON w.position_id = p.id
+                """;
 
         try (Connection conn = db.getConnection();
              PreparedStatement stmt = conn.prepareStatement(selectAllSql);
@@ -244,20 +252,21 @@ public final class WarpCrudManager {
         }
     }
 
-    /** Update warp position
+    /**
+     * Update warp position
      *
-     * @param name Warp name
+     * @param name        Warp name
      * @param newPosition New position
      * @return Updated WarpDTO
      */
     public WarpDTO updateWarpPosition(String name, PositionDTO newPosition) {
         final String sql = """
-        UPDATE sb_positions
-        SET dimension_id = ?,
-            x = ?, y = ?, z = ?,
-            orientation_yaw = ?, orientation_pitch = ?
-        WHERE id = (SELECT position_id FROM sb_warps WHERE name = ?)
-    """;
+                    UPDATE sb_positions
+                    SET dimension_id = ?,
+                        x = ?, y = ?, z = ?,
+                        orientation_yaw = ?, orientation_pitch = ?
+                    WHERE id = (SELECT position_id FROM sb_warps WHERE name = ?)
+                """;
         try (Connection conn = db.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, newPosition.dimensionId());
@@ -277,16 +286,17 @@ public final class WarpCrudManager {
 
     /**
      * Rename a warp
+     *
      * @param oldName the current name of the warp
      * @param newName the new name for the warp
      * @return the updated WarpDTO
      */
     public WarpDTO renameWarp(String oldName, String newName) {
         final String renameWarpSql = """
-        UPDATE sb_warps
-        SET name = ?
-        WHERE name = ?
-        """;
+                UPDATE sb_warps
+                SET name = ?
+                WHERE name = ?
+                """;
 
         try (Connection conn = db.getConnection();
              PreparedStatement stmt = conn.prepareStatement(renameWarpSql)) {
@@ -302,7 +312,9 @@ public final class WarpCrudManager {
         }
     }
 
-    /** Delete warp and return deleted entity
+    /**
+     * Delete warp and return deleted entity
+     *
      * @param name Warp name
      * @return Optional of deleted WarpDTO, or empty if not found
      */
