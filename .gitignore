@@ -38,3 +38,9 @@ hs_err_*.log
 replay_*.log
 *.hprof
 *.jfr
+/src/main/java/as/sirhephaistos/simplybetter/core/db/allCrudMananagers.txt
+/src/main/java/as/sirhephaistos/simplybetter/core/db/concat.py
+/src/main/java/as/sirhephaistos/simplybetter/core/db/exampleClassJavadoc.txt
+/src/main/java/as/sirhephaistos/simplybetter/library/allDTOs.txt
+/src/main/java/as/sirhephaistos/simplybetter/library/concat.py
+/src/main/resources/simplybetter/tablePresentation.md

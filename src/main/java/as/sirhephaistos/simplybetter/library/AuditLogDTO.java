@@ -1,11 +1,14 @@
 package as.sirhephaistos.simplybetter.library;
 
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
 // sb_audit_logs
 public record AuditLogDTO(
-        Long id,
-        String tableName,
-        String initiator,
-        String contextJson,
-        String at
+        @NotNull Long id,
+        @NotNull String tableName,
+        @Nullable String initiator,
+        @Nullable String contextJson,
+        @NotNull String at
 ) {
 }

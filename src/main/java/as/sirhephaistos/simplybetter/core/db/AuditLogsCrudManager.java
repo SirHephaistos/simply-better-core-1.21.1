@@ -8,32 +8,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * CRUD manager for {@link AuditLogDTO}.
- * <p>
- * Persists rows in table {@code sb_audit_logs} with columns:
- * <ul>
- *   <li>id INTEGER PRIMARY KEY AUTOINCREMENT</li>
- *   <li>table_name TEXT NOT NULL</li>
- *   <li>initiator TEXT NOT NULL</li>
- *   <li>context_json TEXT NOT NULL</li>
- *   <li>at TEXT NOT NULL  <!-- timestamp string --></li>
- * </ul>
- * Notes:
- * <ul>
- *   <li>{@code at} is stored as TEXT to match project style.</li>
- *   <li>All SQLExceptions are wrapped in RuntimeExceptions with context.</li>
- *   <li>// TODO: add indexes on (table_name), (initiator), and (at) for query performance.</li>
- * </ul>
- */
+
+@SuppressWarnings("ClassCanBeRecord") // ABSOLUTELY NOT A RECORD CLASS - mutable state inside
 public final class AuditLogsCrudManager {
     private final DatabaseManager db;
 
-    /**
-     * Creates a new CRUD manager for audit logs.
-     *
-     * @param db Database manager providing JDBC connections.
-     */
     public AuditLogsCrudManager(@NotNull DatabaseManager db) {
         this.db = db;
     }

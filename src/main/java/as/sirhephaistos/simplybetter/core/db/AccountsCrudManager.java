@@ -8,7 +8,43 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-@SuppressWarnings("ClassCanBeRecord") // ABSOLUTELY NOT A RECORD CLASS - mutable state inside
+/**
+ * <h1><img src="https://docs.godsmg.com/~gitbook/image?url=https%3A%2F%2F602320278-files.gitbook.io%2F%7E%2Ffiles%2Fv0%2Fb%2Fgitbook-x-prod.appspot.com%2Fo%2Forganizations%252FpIa3Cyk1OAYwYiLI3sxf%252Fsites%252Fsite_hKBWF%252Ficon%252FF3ga5TrIrIMXtWecHo3z%252FChatGPT%2520Image%252025%2520oct.%25202025%252C%252017_44_38.png%3Falt%3Dmedia%26token%3D8c3f45e4-ed6f-47ab-a4ab-474d24fa3bb3&width=32&dpr=1&quality=100&sign=2c456f01&sv=2"></img>
+ * &nbsp;CRUD manager for {@link AccountDTO}
+ * <img src="https://docs-sbs.godsmg.com/~gitbook/image?url=https%3A%2F%2F655127117-files.gitbook.io%2F%7E%2Ffiles%2Fv0%2Fb%2Fgitbook-x-prod.appspot.com%2Fo%2Forganizations%252FpIa3Cyk1OAYwYiLI3sxf%252Fsites%252Fsite_ofAiW%252Ficon%252F9SRBPTo3OKBsw5DvBwL3%252FChatGPT%2520Image%252025%2520oct.%25202025%252C%252000_07_28.png%3Falt%3Dmedia%26token%3D396dda36-5693-4638-b53e-59bf0770f309&width=32&dpr=1&quality=100&sign=55c114e6&sv=2"></img> </h1>
+ * <h2>Create Methods</h2>
+ * <ul>
+ *     <li>{@link #createAccount}:</br>
+ *         Create a new account for the given player UUID. And returns an {@link AccountDTO}.
+ *     </li>
+ * </ul>
+ * <h2>Read Methods</h2>
+ * <ul>
+ *     <li>{@link #getAccountByPlayerUuid}:</br>
+ *         Get account by Player UUID. And return an {@link Optional} containing {@link AccountDTO} if found, empty otherwise.</li>
+ *     <li>{@link #getAllAccounts}:</br>
+ *         Return a list of all accounts in the database. And  returns a {@link List} of {@link AccountDTO}.</li>
+ *     <li>{@link #getAllAccountsPaged}:</br>
+ *         Return a paged list of accounts in the database. And  returns a {@link List} of {@link AccountDTO}.</li>
+ * </ul>
+ * <h2>Update Methods</h2>
+ * <ul>
+ *     <li>{@link #updateAccount}:</br>
+ *         Update account balance and updated_at by player UUID. And  returns the updated {@link AccountDTO}.</li>
+ * </ul>
+ * <h2>Delete Methods</h2>
+ * <ul>
+ *     <li>{@link #deleteAccountByPlayerUuid}:</br>
+ *     Delete account by Player UUID.</li>
+ * </ul>
+ *
+ *<h3>General Information</h3>
+ * @codeBaseStatus Complete
+ * @testingStatus AwaitingJUnitTests
+ * @author Sirhephaistos
+ * @version 1.0
+ */
+@SuppressWarnings("ClassCanBeRecord")
 public final class AccountsCrudManager {
     private final DatabaseManager db;
 
@@ -20,8 +56,8 @@ public final class AccountsCrudManager {
 
     /**
      * Private helper to get a mounted account from a ResultSet.
-     * @param rs ResultSet positioned at the desired row.
-     * @return Mapped AccountDTO.
+     * @param rs {@link ResultSet} positioned at the desired row.
+     * @return Mapped {@link AccountDTO}.
      * @throws SQLException on SQL errors comming from jdbc.
      * @throws IllegalArgumentException if rs is null.
      * @throws IllegalStateException if any non-nullable column is null.
@@ -42,7 +78,7 @@ public final class AccountsCrudManager {
 
     /**
      * Create a new account for the given player UUID
-     * @param playerUuid Owner player UUID.
+     * @param playerUuid Owner {@code playerUuid}.
      * @param balance Initial balance.
      * @param updatedAt Initial updated_at as string, this allows for example to use the time coming from the source
      * @return Created AccountDTO.
@@ -75,7 +111,6 @@ public final class AccountsCrudManager {
         }
         return getAccountByPlayerUuid(id).orElseThrow(() -> new RuntimeException("createAccount post-fetch missing playerUuid=" + id));
     }
-
     // -- Read
 
     /**

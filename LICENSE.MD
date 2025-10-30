@@ -1,4 +1,4 @@
-MIT License
+The code is uinder the MIT License
 
 Copyright (c) 2025 Gods Made Games
 

@@ -57,7 +57,8 @@ Full documentation, module details, and developer API:
 
 ## 📜 License
 
-Code is distributed under the **MIT License**.  
-Images and documentation content are **not open source** — do not copy or reuse without proper credit.
+- Code is distributed under the **MIT License**.
+- Images and documentation content are **not ope source** — do not copy or reuse without proper credit.
+- Icons are from **gravisio** *black hand-drawn* set on **flaticon.com** — Flaticon License, Free for personal and commercial purpose with attribution. .
 
-© Simply Better Suite  
+© Sir Hephaistos @GodsMadeGames.
