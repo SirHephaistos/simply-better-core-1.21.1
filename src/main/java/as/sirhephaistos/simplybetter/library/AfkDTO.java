@@ -1,9 +1,12 @@
 package as.sirhephaistos.simplybetter.library;
 
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
 // sb_afks
 public record AfkDTO(
-        String playerUuid,
-        long sinceSeconds,
-        String message
+        @NotNull String playerUuid,
+        @NotNull String since,
+        @Nullable String message
 ) {
 }

@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+@SuppressWarnings("ClassCanBeRecord") // ABSOLUTELY NOT A RECORD CLASS - mutable state inside
 public final class AccountsCrudManager {
     private final DatabaseManager db;
 
@@ -45,10 +46,15 @@ public final class AccountsCrudManager {
      * @param balance Initial balance.
      * @param updatedAt Initial updated_at as string, this allows for example to use the time coming from the source
      * @return Created AccountDTO.
+     * @throws IllegalArgumentException if an account already exists for the given player UUID.
+     * @throws RuntimeException on SQL errors or if post-fetch fails.
      */
     public AccountDTO createAccount(@NotNull String playerUuid,
                                     long balance,
                                     @NotNull String updatedAt) {
+        if (getAccountByPlayerUuid(playerUuid).isPresent()) {
+            throw new IllegalArgumentException("createAccount: account already exists for playerUuid=" + playerUuid);
+        }
         final String sql = """
                 INSERT INTO sb_accounts (player_uuid, balance, updated_at)
                 VALUES (?, ?, ?)
@@ -74,8 +80,9 @@ public final class AccountsCrudManager {
 
     /**
      * Get account by Player UUID.
-     * @param playerUuid Player UUID.
-     * @return Optional AccountDTO (empty if not found).
+     * @param playerUuid Owner's UUID.
+     * @return Optional containing AccountDTO if found, empty otherwise.
+     * @throws RuntimeException on SQL errors.
      */
     public Optional<AccountDTO> getAccountByPlayerUuid(@NotNull String playerUuid) {
         final String sql = """
@@ -103,6 +110,7 @@ public final class AccountsCrudManager {
     /**
      * Return a list of all accounts in the database.
      * @return List of AccountDTO.
+     * @throws RuntimeException on SQL errors.
      */
     public List<AccountDTO> getAllAccounts() {
         final String sql = """
@@ -124,6 +132,38 @@ public final class AccountsCrudManager {
         }
     }
 
+    /**
+     * Return a paged list of accounts in the database.
+     * @param limit Maximum number of accounts to return.
+     * @param offset Number of accounts to skip.
+     * @return List of AccountDTO.
+     * @throws RuntimeException on SQL errors.
+     */
+    public List<AccountDTO> getAllAccountsPaged(int limit, int offset)
+    {
+        final  String sql = """
+                SELECT
+                    a.player_uuid AS a_player_uuid,
+                    a.balance     AS a_balance,
+                    a.updated_at  AS a_updated_at
+                FROM sb_accounts a
+                ORDER BY a.playerUuid
+                LIMIT ? OFFSET ?
+                """;
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setInt(1, limit);
+            ps.setInt(2, offset);
+            try (ResultSet rs = ps.executeQuery()) {
+                final List<AccountDTO> out = new ArrayList<>();
+                while (rs.next()) out.add(mapAccount(rs));
+                return out;
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("getAllAccountsPaged failed", e);
+        }
+    }
+
     // -- Update
 
     /**
@@ -132,6 +172,7 @@ public final class AccountsCrudManager {
      * @param balance New balance.
      * @param updatedAt New updated_at string. This allows for example to use the time coming from the source
      * @return Updated AccountDTO. It is guaranteed to be present because we are fetching after updating.
+     * @throws RuntimeException on SQL errors or if no rows were affected.
      */
     public AccountDTO updateAccount(@NotNull String playerUuid, long balance, @NotNull String updatedAt) {
         final String sql = """
@@ -154,6 +195,8 @@ public final class AccountsCrudManager {
     /**
      * Delete account by Player UUID.
      * @param playerUuid Owner's UUID.
+     * @throws IllegalArgumentException if account not found.
+     * @throws RuntimeException on SQL errors or if no rows were affected.
      */
     public void deleteAccountByPlayerUuid(@NotNull String playerUuid) {
         if (getAccountByPlayerUuid(playerUuid).isEmpty()) {

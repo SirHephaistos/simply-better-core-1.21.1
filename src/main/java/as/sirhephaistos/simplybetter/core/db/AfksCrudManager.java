@@ -2,21 +2,13 @@ package as.sirhephaistos.simplybetter.core.db;
 
 import as.sirhephaistos.simplybetter.library.AfkDTO;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * JDBC CRUD manager for sb_afks.
- * Assumes one AFK row per player (player_uuid is UNIQUE or PRIMARY KEY).
- * Columns assumed:
- * player_uuid TEXT PRIMARY KEY,
- * since_seconds BIGINT NOT NULL,
- * message TEXT NULL
- * // TODO: adjust table/constraints if schema differs.
- */
 public final class AfksCrudManager {
     private final DatabaseManager db;
 
@@ -25,55 +17,76 @@ public final class AfksCrudManager {
     }
 
     // -- Create
-
+    /**
+     * Map a ResultSet row to AfkDTO.
+     * @param rs the ResultSet, positioned at the row to map.
+     * @throws SQLException on SQL errors comming from jdbc.
+     * @throws IllegalArgumentException if rs is null.
+     * @throws IllegalStateException if any non-nullable column is null.
+    */
     private static AfkDTO mapAfk(ResultSet rs) throws SQLException {
-        final String playerUuid = rs.getString("a_player_uuid");
-        final long sinceSeconds = rs.getLong("a_since_seconds");
+        if (rs == null) throw new IllegalArgumentException("rs cannot be null");
+        if (rs.getString("a_player_uuid") == null)
+            throw new IllegalStateException("a_player_uuid cannot be null");
+        if (rs.getString("a_since") == null)
+            throw  new IllegalStateException("a_since cannot be null");
+        @NotNull final String playerUuid = rs.getString("a_player_uuid");
+        @NotNull String since = rs.getString("a_since");
         final String message = rs.getString("a_message"); // may be null
-        return new AfkDTO(playerUuid, sinceSeconds, message);
+        return new AfkDTO(playerUuid, since, message);
     }
 
     /**
-     * Insert a new AFK record. Fails if the player already has one.
+     * Create a new AFK entry for a player.
+     * @param playerUuid afk player's uuid.
+     * @param since since when the player is afk in string format.
+     * @param message optional afk message.
+     * @return the created AfkDTO.
+     * @throws IllegalStateException if an AFK entry already exists for the player UUID.
+     * @throws RuntimeException on SQL errors or if no rows were affected.
      */
-    public AfkDTO createAfk(@NotNull String playerUuid, long sinceSeconds, String message) {
+    public AfkDTO createAfk(@NotNull String playerUuid, @NotNull String since, @Nullable String message) {
+        if (getAfkByPlayerUuid(playerUuid).isPresent()) {
+            throw new IllegalStateException("AFK entry already exists for player=" + playerUuid);
+        }
         final String sql = """
-                INSERT INTO sb_afks (player_uuid, since_seconds, message)
+                INSERT INTO sb_afks (player_uuid, since, message)
                 VALUES (?, ?, ?)
                 """;
+        String id;
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setString(1, playerUuid);
-            ps.setLong(2, sinceSeconds);
+            ps.setString(2, since);
             if (message == null) ps.setNull(3, Types.VARCHAR);
             else ps.setString(3, message);
             ps.executeUpdate();
+            try (ResultSet keys = ps.getGeneratedKeys()) {
+                if (!keys.next()) {
+                    throw new RuntimeException("createAfk failed, no generated keys");
+                }
+                id = keys.getString(1);
+            }
         } catch (SQLException e) {
             throw new RuntimeException("createAfk failed for player=" + playerUuid, e);
         }
-        return getAfkByPlayerUuid(playerUuid)
+        return getAfkByPlayerUuid(id)
                 .orElseThrow(() -> new RuntimeException("createAfk post-fetch missing for player=" + playerUuid));
     }
 
     // -- Read
 
     /**
-     * Upsert convenience: create if missing, otherwise update both fields.
-     */
-    public AfkDTO createOrUpdateAfk(@NotNull String playerUuid, long sinceSeconds, String message) {
-        final Optional<AfkDTO> existing = getAfkByPlayerUuid(playerUuid);
-        if (existing.isEmpty()) return createAfk(playerUuid, sinceSeconds, message);
-        return updateAfk(playerUuid, sinceSeconds, message);
-    }
-
-    /**
      * Get AFK by player UUID.
+     * @param playerUuid the player's UUID.
+     * @return an Optional containing the AfkDTO if found, or empty if not found.
+     * @throws RuntimeException on SQL errors.
      */
     public Optional<AfkDTO> getAfkByPlayerUuid(@NotNull String playerUuid) {
         final String sql = """
                 SELECT
                     a.player_uuid   AS a_player_uuid,
-                    a.since_seconds AS a_since_seconds,
+                    a.since AS a_since,
                     a.message       AS a_message
                 FROM sb_afks a
                 WHERE a.player_uuid = ?
@@ -91,13 +104,15 @@ public final class AfksCrudManager {
     }
 
     /**
-     * List all AFKs.
+     * Get all AFK entries.
+     * @return a list of all AfkDTOs.
+     * @throws RuntimeException on SQL errors.
      */
     public List<AfkDTO> getAllAfks() {
         final String sql = """
                 SELECT
                     a.player_uuid   AS a_player_uuid,
-                    a.since_seconds AS a_since_seconds,
+                    a.since AS a_since,
                     a.message       AS a_message
                 FROM sb_afks a
                 ORDER BY a.player_uuid
@@ -113,10 +128,42 @@ public final class AfksCrudManager {
         }
     }
 
-    // -- Update
+    /**
+     * Get all AFK entries with pagination.
+     * @param limit maximum number of entries to return.
+     * @param offset number of entries to skip.
+     * @return a list of AfkDTOs.
+     * @throws RuntimeException on SQL errors.
+     */
+    public List<AfkDTO> getAllAfksPaged(int limit, int offset) {
+        final String sql = """
+                SELECT
+                    a.player_uuid   AS a_player_uuid,
+                    a.since AS a_since,
+                    a.message       AS a_message
+                FROM sb_afks a
+                ORDER BY a.player_uuid
+                LIMIT ? OFFSET ?
+                """;
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setInt(1, limit);
+            ps.setInt(2, offset);
+            try (ResultSet rs = ps.executeQuery()) {
+                final List<AfkDTO> out = new ArrayList<>();
+                while (rs.next()) out.add(mapAfk(rs));
+                return out;
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("getAllAfksPaged failed", e);
+        }
+    }
 
     /**
-     * Check if a player is marked AFK.
+     * Check if an AFK entry exists for a player.
+     * @param playerUuid the player's UUID.
+     * @return true if an AFK entry exists, false otherwise.
+     * @throws RuntimeException on SQL errors.
      */
     public boolean existsAfkForPlayer(@NotNull String playerUuid) {
         final String sql = """
@@ -135,18 +182,25 @@ public final class AfksCrudManager {
         }
     }
 
+    // -- Update
+
     /**
-     * Update both sinceSeconds and message.
+     * Update both since and message.
+     * @param playerUuid the player's UUID.
+     * @param since since when the player is afk in string format.
+     * @param message optional afk message.
+     * @return the updated AfkDTO.
+     * @throws RuntimeException on SQL errors or if no rows were affected.
      */
-    public AfkDTO updateAfk(@NotNull String playerUuid, long sinceSeconds, String message) {
+    public AfkDTO updateAfk(@NotNull String playerUuid, @NotNull String since, @Nullable String message) {
         final String sql = """
                 UPDATE sb_afks
-                SET since_seconds = ?, message = ?
+                SET since = ?, message = ?
                 WHERE player_uuid = ?
                 """;
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setLong(1, sinceSeconds);
+            ps.setString(1, since);
             if (message == null) ps.setNull(2, Types.VARCHAR);
             else ps.setString(2, message);
             ps.setString(3, playerUuid);
@@ -160,9 +214,13 @@ public final class AfksCrudManager {
     }
 
     /**
-     * Update only the message.
+     * Update only message.
+     * @param playerUuid the player's UUID.
+     * @param message optional afk message.
+     * @return the updated AfkDTO.
+     * @throws RuntimeException on SQL errors or if no rows were affected.
      */
-    public AfkDTO setAfkMessage(@NotNull String playerUuid, String message) {
+    public AfkDTO setAfkMessage(@NotNull String playerUuid,@Nullable String message) {
         final String sql = """
                 UPDATE sb_afks
                 SET message = ?
@@ -182,20 +240,22 @@ public final class AfksCrudManager {
                 .orElseThrow(() -> new RuntimeException("setAfkMessage post-fetch missing for player=" + playerUuid));
     }
 
-    // -- Delete
-
     /**
-     * Update only sinceSeconds.
+     * Update only since.
+     * @param playerUuid the player's UUID.
+     * @param since since when the player is afk in string format.
+     * @return the updated AfkDTO.
+     * @throws RuntimeException on SQL errors or if no rows were affected.
      */
-    public AfkDTO setAfkSinceSeconds(@NotNull String playerUuid, long sinceSeconds) {
+    public AfkDTO setAfkSince(@NotNull String playerUuid, @NotNull String since) {
         final String sql = """
                 UPDATE sb_afks
-                SET since_seconds = ?
+                SET since = ?
                 WHERE player_uuid = ?
                 """;
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setLong(1, sinceSeconds);
+            ps.setString(1, since);
             ps.setString(2, playerUuid);
             final int upd = ps.executeUpdate();
             if (upd == 0) throw new RuntimeException("setAfkSinceSeconds affected 0 rows for player=" + playerUuid);
@@ -206,15 +266,18 @@ public final class AfksCrudManager {
                 .orElseThrow(() -> new RuntimeException("setAfkSinceSeconds post-fetch missing for player=" + playerUuid));
     }
 
-    // -- Mapper
+    // -- Delete
 
     /**
-     * Delete and return previous row if it existed.
+     * Delete AFK entry by player UUID.
+     * @param playerUuid the player's UUID.
+     * @throws IllegalStateException if no AFK entry exists for the player UUID.
+     * @throws RuntimeException on SQL errors or if no rows were affected.
      */
-    public Optional<AfkDTO> deleteAfkByPlayerUuid(@NotNull String playerUuid) {
-        final Optional<AfkDTO> before = getAfkByPlayerUuid(playerUuid);
-        if (before.isEmpty()) return Optional.empty();
-
+    public void deleteAfkByPlayerUuid(@NotNull String playerUuid) {
+        if (!existsAfkForPlayer(playerUuid)) {
+            throw new IllegalStateException("deleteAfkByPlayerUuid: no AFK entry for player=" + playerUuid);
+        }
         final String sql = """
                 DELETE FROM sb_afks
                 WHERE player_uuid = ?
@@ -222,8 +285,8 @@ public final class AfksCrudManager {
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setString(1, playerUuid);
-            ps.executeUpdate();
-            return before;
+            final int del = ps.executeUpdate();
+            if (del == 0) throw new RuntimeException("deleteAfkByPlayerUuid affected 0 rows for player=" + playerUuid);
         } catch (SQLException e) {
             throw new RuntimeException("deleteAfkByPlayerUuid failed for player=" + playerUuid, e);
         }

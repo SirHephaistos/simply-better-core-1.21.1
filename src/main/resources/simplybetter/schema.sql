@@ -106,7 +106,7 @@ CREATE INDEX IF NOT EXISTS idx_sb_ignores_target ON sb_ignores(target_uuid);
 -- AFK state
 CREATE TABLE IF NOT EXISTS sb_afks (
   player_uuid            TEXT    PRIMARY KEY,
-  since_seconds          INTEGER NOT NULL DEFAULT 0,
+  since                  TEXT NOT NULL DEFAULT (datetime('now')),
   message                TEXT,
   FOREIGN KEY(player_uuid) REFERENCES sb_players(uuid) ON DELETE CASCADE
 );
