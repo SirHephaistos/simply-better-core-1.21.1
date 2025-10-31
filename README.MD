@@ -51,7 +51,7 @@ Optional dependencies:
 ## 📘 Documentation
 
 Full documentation, module details, and developer API:  
-👉 [https://simplybettersuite.gitbook.io/docs](https://simplybettersuite.gitbook.io/docs) *(temporary link — will be updated)*
+👉 [Simply Better Suite - Documentation](https://docs-sbs.godsmg.com)
 
 ---
 
