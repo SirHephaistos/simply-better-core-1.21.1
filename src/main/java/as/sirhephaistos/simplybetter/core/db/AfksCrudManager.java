@@ -58,11 +58,11 @@ public final class AfksCrudManager {
         this.db = db;
     }
 
-    // -- Create
     /**
-     * Map a ResultSet row to AfkDTO.
-     * @param rs the ResultSet, positioned at the row to map.
-     * @throws SQLException on SQL errors comming from jdbc.
+     * Privater helper to get a mounted {@link AfkDTO} from a {@link ResultSet}.
+     * @param rs the {@link ResultSet}, positioned at the row to map.
+     * @return the mapped {@link AfkDTO}.
+     * @throws SQLException on SQL errors coming from jdbc.
      * @throws IllegalArgumentException if rs is null.
      * @throws IllegalStateException if any non-nullable column is null.
     */
@@ -78,18 +78,20 @@ public final class AfksCrudManager {
         return new AfkDTO(playerUuid, since, message);
     }
 
+    // -- Create
+
     /**
      * Create a new AFK entry for a player.
-     * @param playerUuid afk player's uuid.
+     * @param playerUuid afk {@code playerUuid}.
      * @param since since when the player is afk in string format.
      * @param message optional afk message.
-     * @return the created AfkDTO.
-     * @throws IllegalStateException if an AFK entry already exists for the player UUID.
+     * @return the created {@link AfkDTO}.
+     * @throws IllegalArgumentException if an AFK entry already exists for the {@code playerUuid}.
      * @throws RuntimeException on SQL errors or if no rows were affected.
      */
     public AfkDTO createAfk(@NotNull String playerUuid, @NotNull String since, @Nullable String message) {
         if (getAfkByPlayerUuid(playerUuid).isPresent()) {
-            throw new IllegalStateException("AFK entry already exists for player=" + playerUuid);
+            throw new IllegalArgumentException("createAfk: AFK entry already exists for playerUuid=" + playerUuid);
         }
         final String sql = """
                 INSERT INTO sb_afks (player_uuid, since, message)
@@ -105,23 +107,23 @@ public final class AfksCrudManager {
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 if (!keys.next()) {
-                    throw new RuntimeException("createAfk failed, no generated keys");
+                    throw new RuntimeException("No generated keys");
                 }
                 id = keys.getString(1);
             }
         } catch (SQLException e) {
-            throw new RuntimeException("createAfk failed for player=" + playerUuid, e);
+            throw new RuntimeException("createAfk: failed for playerUuid=" + playerUuid, e);
         }
         return getAfkByPlayerUuid(id)
-                .orElseThrow(() -> new RuntimeException("createAfk post-fetch missing for player=" + playerUuid));
+                .orElseThrow(() -> new RuntimeException("createAfk: post-fetch missing for playerUuid=" + playerUuid));
     }
 
     // -- Read
 
     /**
-     * Get AFK by player UUID.
-     * @param playerUuid the player's UUID.
-     * @return an Optional containing the AfkDTO if found, or empty if not found.
+     * Get AFK by {@code playerUuid}.
+     * @param playerUuid the {@code playerUuid}.
+     * @return an {@link Optional} containing {@link AfkDTO} if found, empty otherwise.
      * @throws RuntimeException on SQL errors.
      */
     public Optional<AfkDTO> getAfkByPlayerUuid(@NotNull String playerUuid) {
@@ -141,13 +143,13 @@ public final class AfksCrudManager {
                 return Optional.empty();
             }
         } catch (SQLException e) {
-            throw new RuntimeException("getAfkByPlayerUuid failed for player=" + playerUuid, e);
+            throw new RuntimeException("getAfkByPlayerUuid: failed for playerUuid=" + playerUuid, e);
         }
     }
 
     /**
      * Get all AFK entries.
-     * @return a list of all AfkDTOs.
+     * @return a {@link List} of {@link AfkDTO}.
      * @throws RuntimeException on SQL errors.
      */
     public List<AfkDTO> getAllAfks() {
@@ -166,7 +168,7 @@ public final class AfksCrudManager {
             while (rs.next()) out.add(mapAfk(rs));
             return out;
         } catch (SQLException e) {
-            throw new RuntimeException("getAllAfks failed", e);
+            throw new RuntimeException("getAllAfks: failed", e);
         }
     }
 
@@ -174,7 +176,7 @@ public final class AfksCrudManager {
      * Get all AFK entries with pagination.
      * @param limit maximum number of entries to return.
      * @param offset number of entries to skip.
-     * @return a list of AfkDTOs.
+     * @return a {@link List} of {@link AfkDTO}.
      * @throws RuntimeException on SQL errors.
      */
     public List<AfkDTO> getAllAfksPaged(int limit, int offset) {
@@ -197,13 +199,13 @@ public final class AfksCrudManager {
                 return out;
             }
         } catch (SQLException e) {
-            throw new RuntimeException("getAllAfksPaged failed", e);
+            throw new RuntimeException("getAllAfksPaged: failed", e);
         }
     }
 
     /**
      * Check if an AFK entry exists for a player.
-     * @param playerUuid the player's UUID.
+     * @param playerUuid the {@code playerUuid}.
      * @return true if an AFK entry exists, false otherwise.
      * @throws RuntimeException on SQL errors.
      */
@@ -220,7 +222,7 @@ public final class AfksCrudManager {
                 return rs.next();
             }
         } catch (SQLException e) {
-            throw new RuntimeException("existsAfkForPlayer failed for player=" + playerUuid, e);
+            throw new RuntimeException("existsAfkForPlayer: failed for playerUuid=" + playerUuid, e);
         }
     }
 
@@ -228,10 +230,10 @@ public final class AfksCrudManager {
 
     /**
      * Update both since and message.
-     * @param playerUuid the player's UUID.
+     * @param playerUuid the {@code playerUuid}.
      * @param since since when the player is afk in string format.
      * @param message optional afk message.
-     * @return the updated AfkDTO.
+     * @return the updated {@link AfkDTO}.
      * @throws RuntimeException on SQL errors or if no rows were affected.
      */
     public AfkDTO updateAfk(@NotNull String playerUuid, @NotNull String since, @Nullable String message) {
@@ -247,19 +249,19 @@ public final class AfksCrudManager {
             else ps.setString(2, message);
             ps.setString(3, playerUuid);
             final int upd = ps.executeUpdate();
-            if (upd == 0) throw new RuntimeException("updateAfk affected 0 rows for player=" + playerUuid);
+            if (upd == 0) throw new RuntimeException("updateAfk: affected 0 rows for playerUuid=" + playerUuid);
         } catch (SQLException e) {
-            throw new RuntimeException("updateAfk failed for player=" + playerUuid, e);
+            throw new RuntimeException("updateAfk: failed for playerUuid=" + playerUuid, e);
         }
         return getAfkByPlayerUuid(playerUuid)
-                .orElseThrow(() -> new RuntimeException("updateAfk post-fetch missing for player=" + playerUuid));
+                .orElseThrow(() -> new RuntimeException("updateAfk: post-fetch missing for playerUuid=" + playerUuid));
     }
 
     /**
      * Update only message.
-     * @param playerUuid the player's UUID.
+     * @param playerUuid the {@code playerUuid}.
      * @param message optional afk message.
-     * @return the updated AfkDTO.
+     * @return the updated {@link AfkDTO}.
      * @throws RuntimeException on SQL errors or if no rows were affected.
      */
     public AfkDTO setAfkMessage(@NotNull String playerUuid,@Nullable String message) {
@@ -274,19 +276,19 @@ public final class AfksCrudManager {
             else ps.setString(1, message);
             ps.setString(2, playerUuid);
             final int upd = ps.executeUpdate();
-            if (upd == 0) throw new RuntimeException("setAfkMessage affected 0 rows for player=" + playerUuid);
+            if (upd == 0) throw new RuntimeException("setAfkMessage: affected 0 rows for playerUuid=" + playerUuid);
         } catch (SQLException e) {
-            throw new RuntimeException("setAfkMessage failed for player=" + playerUuid, e);
+            throw new RuntimeException("setAfkMessage: failed for playerUuid=" + playerUuid, e);
         }
         return getAfkByPlayerUuid(playerUuid)
-                .orElseThrow(() -> new RuntimeException("setAfkMessage post-fetch missing for player=" + playerUuid));
+                .orElseThrow(() -> new RuntimeException("setAfkMessage: post-fetch missing for playerUuid=" + playerUuid));
     }
 
     /**
      * Update only since.
-     * @param playerUuid the player's UUID.
+     * @param playerUuid the {@code playerUuid}.
      * @param since since when the player is afk in string format.
-     * @return the updated AfkDTO.
+     * @return the updated {@link AfkDTO}.
      * @throws RuntimeException on SQL errors or if no rows were affected.
      */
     public AfkDTO setAfkSince(@NotNull String playerUuid, @NotNull String since) {
@@ -300,25 +302,25 @@ public final class AfksCrudManager {
             ps.setString(1, since);
             ps.setString(2, playerUuid);
             final int upd = ps.executeUpdate();
-            if (upd == 0) throw new RuntimeException("setAfkSinceSeconds affected 0 rows for player=" + playerUuid);
+            if (upd == 0) throw new RuntimeException("setAfkSinceSeconds: affected 0 rows for playerUuid=" + playerUuid);
         } catch (SQLException e) {
-            throw new RuntimeException("setAfkSinceSeconds failed for player=" + playerUuid, e);
+            throw new RuntimeException("setAfkSinceSeconds: failed for playerUuid=" + playerUuid, e);
         }
         return getAfkByPlayerUuid(playerUuid)
-                .orElseThrow(() -> new RuntimeException("setAfkSinceSeconds post-fetch missing for player=" + playerUuid));
+                .orElseThrow(() -> new RuntimeException("setAfkSinceSeconds: post-fetch missing for playerUuid=" + playerUuid));
     }
 
     // -- Delete
 
     /**
-     * Delete AFK entry by player UUID.
-     * @param playerUuid the player's UUID.
-     * @throws IllegalStateException if no AFK entry exists for the player UUID.
+     * Delete AFK entry by {@code playerUuid}.
+     * @param playerUuid the {@code playerUuid}..
+     * @throws IllegalStateException if no AFK entry exists for the {@code playerUuid}.
      * @throws RuntimeException on SQL errors or if no rows were affected.
      */
     public void deleteAfkByPlayerUuid(@NotNull String playerUuid) {
         if (!existsAfkForPlayer(playerUuid)) {
-            throw new IllegalStateException("deleteAfkByPlayerUuid: no AFK entry for player=" + playerUuid);
+            throw new IllegalStateException("deleteAfkByPlayerUuid: no AFK entry for playerUuid=" + playerUuid);
         }
         final String sql = """
                 DELETE FROM sb_afks
@@ -327,10 +329,16 @@ public final class AfksCrudManager {
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setString(1, playerUuid);
-            final int del = ps.executeUpdate();
-            if (del == 0) throw new RuntimeException("deleteAfkByPlayerUuid affected 0 rows for player=" + playerUuid);
+            ps.executeUpdate();
+            if (ps.executeUpdate() == 0) {
+                throw new RuntimeException("deleteAfkByPlayerUuid: affected 0 rows for playerUuid=" + playerUuid);
+            }
+            if (existsAfkForPlayer(playerUuid)) {
+                throw new RuntimeException("deleteAfkByPlayerUuid: failed to delete for playerUuid=" + playerUuid);
+            }
+
         } catch (SQLException e) {
-            throw new RuntimeException("deleteAfkByPlayerUuid failed for player=" + playerUuid, e);
+            throw new RuntimeException("deleteAfkByPlayerUuid: failed for playerUuid=" + playerUuid, e);
         }
     }
 }

@@ -1,9 +1,12 @@
 package as.sirhephaistos.simplybetter.library;
 
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
 // sb_worlds
 public record WorldDTO(
-        Long id,
-        String dimensionId,
-        Long centerPositionId
+        @NotNull Long id,
+        @NotNull String dimensionId,
+        @Nullable Long centerPositionId
 ) {}
 

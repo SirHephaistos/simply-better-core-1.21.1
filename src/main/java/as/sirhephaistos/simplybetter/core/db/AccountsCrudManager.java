@@ -7,7 +7,6 @@ import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-
 /**
  * <h1><img src="https://docs.godsmg.com/~gitbook/image?url=https%3A%2F%2F602320278-files.gitbook.io%2F%7E%2Ffiles%2Fv0%2Fb%2Fgitbook-x-prod.appspot.com%2Fo%2Forganizations%252FpIa3Cyk1OAYwYiLI3sxf%252Fsites%252Fsite_hKBWF%252Ficon%252FF3ga5TrIrIMXtWecHo3z%252FChatGPT%2520Image%252025%2520oct.%25202025%252C%252017_44_38.png%3Falt%3Dmedia%26token%3D8c3f45e4-ed6f-47ab-a4ab-474d24fa3bb3&width=32&dpr=1&quality=100&sign=2c456f01&sv=2"></img>
  * &nbsp;CRUD manager for {@link AccountDTO}
@@ -52,10 +51,8 @@ public final class AccountsCrudManager {
         this.db = db;
     }
 
-    // -- Create
-
     /**
-     * Private helper to get a mounted account from a ResultSet.
+     * Private helper to get a mounted {@link AccountDTO} from a {@link ResultSet}.
      * @param rs {@link ResultSet} positioned at the desired row.
      * @return Mapped {@link AccountDTO}.
      * @throws SQLException on SQL errors comming from jdbc.
@@ -63,33 +60,35 @@ public final class AccountsCrudManager {
      * @throws IllegalStateException if any non-nullable column is null.
      */
     private static AccountDTO mapAccount(ResultSet rs) throws SQLException{
-        if (rs == null) throw new IllegalArgumentException("mapAccount: rs is null");
+        if (rs == null) throw new IllegalArgumentException("rs is null");
         if (rs.getString("a_player_uuid") == null)
-            throw new IllegalStateException("mapAccount: player_uuid is null");
+            throw new IllegalStateException("player_uuid is null");
         if (rs.getString("a_balance") == null)
-            throw new IllegalStateException("mapAccount: balance is null");
+            throw new IllegalStateException("balance is null");
         if (rs.getString("a_updated_at") == null)
-            throw new IllegalStateException("mapAccount: updated_at is null");
+            throw new IllegalStateException("updated_at is null");
         @NotNull final String playerUuid = rs.getString("a_player_uuid");
         final long balance = rs.getLong("a_balance");
         @NotNull final String updatedAt = rs.getString("a_updated_at");
         return new AccountDTO(playerUuid, balance, updatedAt);
     }
 
+    // -- Create
+
     /**
      * Create a new account for the given player UUID
      * @param playerUuid Owner {@code playerUuid}.
      * @param balance Initial balance.
      * @param updatedAt Initial updated_at as string, this allows for example to use the time coming from the source
-     * @return Created AccountDTO.
-     * @throws IllegalArgumentException if an account already exists for the given player UUID.
+     * @return Created {@link AccountDTO}.
+     * @throws IllegalArgumentException if an account already exists for the given {@code playerUuid}.
      * @throws RuntimeException on SQL errors or if post-fetch fails.
      */
     public AccountDTO createAccount(@NotNull String playerUuid,
                                     long balance,
                                     @NotNull String updatedAt) {
         if (getAccountByPlayerUuid(playerUuid).isPresent()) {
-            throw new IllegalArgumentException("createAccount: account already exists for playerUuid=" + playerUuid);
+            throw new IllegalArgumentException("Account already exists for playerUuid=" + playerUuid);
         }
         final String sql = """
                 INSERT INTO sb_accounts (player_uuid, balance, updated_at)
@@ -103,29 +102,27 @@ public final class AccountsCrudManager {
             ps.setString(3, updatedAt);
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) {
-                if (!keys.next()) throw new RuntimeException("createAccount: no generated key");
+                if (!keys.next()) throw new RuntimeException("No generated key");
                 id = keys.getString(1);
             }
         } catch (SQLException e) {
-            throw new RuntimeException("createAccount failed for player=" + playerUuid, e);
+            throw new RuntimeException("Failed for playerUuid=" + playerUuid, e);
         }
-        return getAccountByPlayerUuid(id).orElseThrow(() -> new RuntimeException("createAccount post-fetch missing playerUuid=" + id));
+        return getAccountByPlayerUuid(id).orElseThrow(() -> new RuntimeException("Post-fetch missing playerUuid=" + id));
     }
     // -- Read
 
     /**
-     * Get account by Player UUID.
-     * @param playerUuid Owner's UUID.
-     * @return Optional containing AccountDTO if found, empty otherwise.
+     * Get account by {@code playerUuid}.
+     * @param playerUuid Owner's {@code playerUuid}.
+     * @return an {@link Optional} containing {@link AccountDTO} if found, empty otherwise.
      * @throws RuntimeException on SQL errors.
      */
     public Optional<AccountDTO> getAccountByPlayerUuid(@NotNull String playerUuid) {
         final String sql = """
                 SELECT
-                    a.playerUuid          AS a_id,
                     a.player_uuid AS a_player_uuid,
                     a.balance     AS a_balance,
-                    a.created_at  AS a_created_at,
                     a.updated_at  AS a_updated_at
                 FROM sb_accounts a
                 WHERE a.player_uuid = ?
@@ -138,13 +135,13 @@ public final class AccountsCrudManager {
                 return Optional.empty();
             }
         } catch (SQLException e) {
-            throw new RuntimeException("getAccountByPlayerUuid failed for player=" + playerUuid, e);
+            throw new RuntimeException("Failed for playerUuid=" + playerUuid, e);
         }
     }
 
     /**
      * Return a list of all accounts in the database.
-     * @return List of AccountDTO.
+     * @return a {@link List} of {@link AccountDTO}.
      * @throws RuntimeException on SQL errors.
      */
     public List<AccountDTO> getAllAccounts() {
@@ -163,7 +160,7 @@ public final class AccountsCrudManager {
             while (rs.next()) out.add(mapAccount(rs));
             return out;
         } catch (SQLException e) {
-            throw new RuntimeException("getAllAccounts failed", e);
+            throw new RuntimeException("Failed to get all accounts", e);
         }
     }
 
@@ -171,7 +168,7 @@ public final class AccountsCrudManager {
      * Return a paged list of accounts in the database.
      * @param limit Maximum number of accounts to return.
      * @param offset Number of accounts to skip.
-     * @return List of AccountDTO.
+     * @return a {@link List} of {@link AccountDTO}.
      * @throws RuntimeException on SQL errors.
      */
     public List<AccountDTO> getAllAccountsPaged(int limit, int offset)
@@ -195,18 +192,18 @@ public final class AccountsCrudManager {
                 return out;
             }
         } catch (SQLException e) {
-            throw new RuntimeException("getAllAccountsPaged failed", e);
+            throw new RuntimeException("Failed to get paged accounts, limit=" + limit + ", offset=" + offset, e);
         }
     }
 
     // -- Update
 
     /**
-     * Update account balance and updated_at by player UUID.
-     * @param playerUuid Owner's UUID.
+     * Update account balance and updated_at by {@code playerUuid}.
+     * @param playerUuid Owner's {@code playerUuid}.
      * @param balance New balance.
      * @param updatedAt New updated_at string. This allows for example to use the time coming from the source
-     * @return Updated AccountDTO. It is guaranteed to be present because we are fetching after updating.
+     * @return the updated {@link AccountDTO}.
      * @throws RuntimeException on SQL errors or if no rows were affected.
      */
     public AccountDTO updateAccount(@NotNull String playerUuid, long balance, @NotNull String updatedAt) {
@@ -219,23 +216,23 @@ public final class AccountsCrudManager {
             ps.setLong(1, balance);
             ps.setString(2, updatedAt);
             final int upd = ps.executeUpdate();
-            if (upd == 0) throw new RuntimeException("updateAccount affected 0 rows players uuid=" + playerUuid);
+            if (upd == 0) throw new RuntimeException("Affected 0 rows for playerUuid=" + playerUuid);
         } catch (SQLException e) {
-            throw new RuntimeException("updateAccount failed playerUuid=" + playerUuid, e);
+            throw new RuntimeException("Failed for playerUuid=" + playerUuid, e);
         }
-        return getAccountByPlayerUuid(playerUuid).orElseThrow(() -> new RuntimeException("updateAccount post-fetch missing playerUuid=" + playerUuid));
+        return getAccountByPlayerUuid(playerUuid).orElseThrow(() -> new RuntimeException("Post-fetch missing playerUuid=" + playerUuid));
     }
 
     // -- Delete
     /**
-     * Delete account by Player UUID.
-     * @param playerUuid Owner's UUID.
+     * Delete account by {@code playerUuid}.
+     * @param playerUuid Owner's {@code playerUuid}.
      * @throws IllegalArgumentException if account not found.
      * @throws RuntimeException on SQL errors or if no rows were affected.
      */
     public void deleteAccountByPlayerUuid(@NotNull String playerUuid) {
         if (getAccountByPlayerUuid(playerUuid).isEmpty()) {
-            throw new IllegalArgumentException("deleteAccountByPlayerUuid: account not found for playerUuid=" + playerUuid);
+            throw new IllegalArgumentException("Account not found for playerUuid=" + playerUuid);
         }
         final String sql = """
                 DELETE FROM sb_accounts
@@ -245,11 +242,14 @@ public final class AccountsCrudManager {
              PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setString(1, playerUuid);
             ps.executeUpdate();
+            if (ps.getUpdateCount() == 0) {
+                throw new RuntimeException("Affected 0 rows for playerUuid=" + playerUuid);
+            }
             if (getAccountByPlayerUuid(playerUuid).isPresent()) {
-                throw new RuntimeException("deleteAccountByPlayerUuid failed to delete playerUuid=" + playerUuid);
+                throw new RuntimeException("Failed to delete for playerUuid=" + playerUuid);
             }
         } catch (SQLException e) {
-            throw new RuntimeException("deleteAccountByPlayerUuid failed for player=" + playerUuid, e);
+            throw new RuntimeException("Failed for playerUuid=" + playerUuid, e);
         }
     }
 }

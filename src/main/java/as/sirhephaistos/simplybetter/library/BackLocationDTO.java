@@ -1,10 +1,12 @@
 package as.sirhephaistos.simplybetter.library;
 
+import org.jetbrains.annotations.NotNull;
+
 // sb_back_locations
 public record BackLocationDTO(
-        String playerUuid,
-        String updatedAt,
-        Long previousPositionId,
-        Long currentPositionId
+        @NotNull String playerUuid,
+        @NotNull String updatedAt,
+        @NotNull Long previousPositionId,
+        @NotNull Long currentPositionId
 ) {
 }

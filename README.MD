@@ -55,6 +55,16 @@ Full documentation, module details, and developer API:
 
 ---
 
+## 🤝 Supporters
+
+A special thanks to our supporters for keeping this project alive:
+
+1. **GitBook Inc.** — for hosting all GMG documentation, including this project.  
+   Looking for a platform to create and host your own documentation?  
+   👉 Try **[GitBook](https://www.gitbook.com)** 🥁 free for open-source projects!
+
+---
+
 ## 📜 License
 
 - Code is distributed under the **MIT License**.
