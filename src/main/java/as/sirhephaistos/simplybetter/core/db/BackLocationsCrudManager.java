@@ -1,6 +1,8 @@
 package as.sirhephaistos.simplybetter.core.db;
 
+import as.sirhephaistos.simplybetter.library.AfkDTO;
 import as.sirhephaistos.simplybetter.library.BackLocationDTO;
+import as.sirhephaistos.simplybetter.library.PositionDTO;
 import org.jetbrains.annotations.NotNull;
 
 import java.sql.*;
@@ -9,35 +11,57 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * CRUD manager for {@link BackLocationDTO}.
- * <p>
- * Persists rows in table {@code sb_back_locations} with columns:
+ * <h1><img src="https://docs.godsmg.com/~gitbook/image?url=https%3A%2F%2F602320278-files.gitbook.io%2F%7E%2Ffiles%2Fv0%2Fb%2Fgitbook-x-prod.appspot.com%2Fo%2Forganizations%252FpIa3Cyk1OAYwYiLI3sxf%252Fsites%252Fsite_hKBWF%252Ficon%252FF3ga5TrIrIMXtWecHo3z%252FChatGPT%2520Image%252025%2520oct.%25202025%252C%252017_44_38.png%3Falt%3Dmedia%26token%3D8c3f45e4-ed6f-47ab-a4ab-474d24fa3bb3&width=32&dpr=1&quality=100&sign=2c456f01&sv=2"></img>
+ * &nbsp;CRUD manager for {@link BackLocationDTO}
+ * <img src="https://docs-sbs.godsmg.com/~gitbook/image?url=https%3A%2F%2F655127117-files.gitbook.io%2F%7E%2Ffiles%2Fv0%2Fb%2Fgitbook-x-prod.appspot.com%2Fo%2Forganizations%252FpIa3Cyk1OAYwYiLI3sxf%252Fsites%252Fsite_ofAiW%252Ficon%252F9SRBPTo3OKBsw5DvBwL3%252FChatGPT%2520Image%252025%2520oct.%25202025%252C%252000_07_28.png%3Falt%3Dmedia%26token%3D396dda36-5693-4638-b53e-59bf0770f309&width=32&dpr=1&quality=100&sign=55c114e6&sv=2"></img> </h1>
+ * <h2>Create Methods</h2>
  * <ul>
- *   <li>player_uuid TEXT PRIMARY KEY REFERENCES sb_players(uuid) ON DELETE CASCADE</li>
- *   <li>updated_at TEXT NOT NULL DEFAULT (datetime('now'))</li>
- *   <li>previous_position_id INTEGER NOT NULL REFERENCES sb_positions(id) ON DELETE CASCADE</li>
- *   <li>current_position_id  INTEGER NOT NULL REFERENCES sb_positions(id) ON DELETE CASCADE</li>
+ *     <li>{@link #method}:</br>
+ *         Description. And returns {}. </li>
  * </ul>
- * All SQLExceptions are wrapped into RuntimeExceptions with context.
+ * <h2>Read Methods</h2>
+ * <ul>
+ *     <li>{@link #method}:</br>
+ *         Description. And returns {}. </li>
+ * </ul>
+ * <h2>Update Methods</h2>
+ * <ul>
+ *     <li>{@link #method}:</br>
+ *         Description. And returns {}. </li>
+ * </ul>
+ * <h2>Delete Methods</h2>
+ * <ul>
+ *     <li>{@link #method}:</br>
+ *         Description</li>
+ * </ul>
+ *
+ *<h3>General Information</h3>
+ * @codeBaseStatus Complete
+ * @testingStatus AwaitingJUnitTests
+ * @author Sirhephaistos
+ * @version 1.0
  */
 public final class BackLocationsCrudManager {
     private final DatabaseManager db;
 
-    /**
-     * Creates a new CRUD manager for back locations.
-     *
-     * @param db Database manager providing JDBC connections.
-     */
     public BackLocationsCrudManager(@NotNull DatabaseManager db) {
         this.db = db;
     }
 
-    private static long requireId(Long id, String field) {
-        if (id == null) throw new IllegalArgumentException(field + " must not be null");
-        return id;
-    }
-
+    /**
+     * Privater helper to get a mounted {@link BackLocationDTO} from a {@link ResultSet}.
+     * @param rs the {@link ResultSet}, positioned at the row to map.
+     * @return the mapped {@link AfkDTO}.
+     * @throws SQLException on SQL errors coming from jdbc.
+     * @throws IllegalArgumentException if rs is null.
+     * @throws IllegalStateException if any non-nullable column is null.
+     */
     private static BackLocationDTO map(@NotNull ResultSet rs) throws SQLException {
+        if (rs == null) throw new IllegalArgumentException("ResultSet must not be null");
+        if (rs.getString("player_uuid") == null)
+            throw new IllegalStateException("player_uuid column is null");
+        if (rs.getString("updated_at") == null)
+            throw new IllegalStateException("updated_at column is null");
         final String playerUuid = rs.getString("player_uuid");
         final String updatedAt = rs.getString("updated_at");
         final long prev = rs.getLong("previous_position_id");
@@ -45,39 +69,80 @@ public final class BackLocationsCrudManager {
         return new BackLocationDTO(playerUuid, updatedAt, prev, curr);
     }
 
+    // -- Create
+
     /**
-     * Inserts a new back-location row for a player.
-     * If {@code updatedAt} is null the database default current timestamp is used.
-     *
-     * @param b Input DTO. {@code playerUuid}, {@code previousPositionId}, and {@code currentPositionId} must be non-null.
-     * @return Persisted {@link BackLocationDTO}.
-     * @throws RuntimeException on SQL errors.
+     * Creates a new back location entry for the given {@code playerUuid}.
+     * @param playerUuid {@code playerUuid}.
+     * @param updatedAt timestamp string to persist.
+     * @param previousPosition Previous {@link PositionDTO}.
+     * @param currentPosition Current {@link PositionDTO}.
+     * @return The created {@link BackLocationDTO}.
+     * @throws IllegalArgumentException if a back location for the {@code playerUuid}. already exists.
+     * @throws RuntimeException on SQL errors or if no rows were affected.
      */
-    public BackLocationDTO createBackLocation(@NotNull BackLocationDTO b) {
+    public BackLocationDTO createBackLocation(@NotNull String playerUuid,
+                                              @NotNull String updatedAt,
+                                              PositionDTO previousPosition,
+                                              PositionDTO currentPosition) {
+        if (getBackLocationByPlayerUuid(playerUuid).isEmpty()) {
+            throw new IllegalArgumentException("Back location for playerUuid=" + playerUuid + " already exists");
+        }
+        PositionsCrudManager positionsCrudManager = new PositionsCrudManager(db);
+        if (previousPosition.id() == null) {
+            previousPosition = positionsCrudManager.createPosition(
+                    previousPosition.dimensionId(),
+                    previousPosition.x(),
+                    previousPosition.y(),
+                    previousPosition.z(),
+                    previousPosition.yaw(),
+                    previousPosition.pitch()
+            );
+        }
+        if (currentPosition.id() == null) {
+            currentPosition = positionsCrudManager.createPosition(
+                    currentPosition.dimensionId(),
+                    currentPosition.x(),
+                    currentPosition.y(),
+                    currentPosition.z(),
+                    currentPosition.yaw(),
+                    currentPosition.pitch()
+            );
+        }
+        if (previousPosition.id() == null || currentPosition.id() == null) {
+            throw new IllegalStateException("Position IDs must not be null after creation");
+        }
+        String id;
         final String sql = """
                 INSERT INTO sb_back_locations (player_uuid, updated_at, previous_position_id, current_position_id)
-                VALUES (?, COALESCE(?, datetime('now')), ?, ?)
+                VALUES (?, ?, ?, ?)
                 """;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, b.playerUuid());
-            if (b.updatedAt() == null) ps.setNull(2, Types.VARCHAR);
-            else ps.setString(2, b.updatedAt());
-            ps.setLong(3, requireId(b.previousPositionId(), "previousPositionId"));
-            ps.setLong(4, requireId(b.currentPositionId(), "currentPositionId"));
+            ps.setString(1, playerUuid);
+            ps.setString(2, updatedAt);
+            ps.setLong(3, previousPosition.id());
+            ps.setLong(4, currentPosition.id());
             ps.executeUpdate();
-            // If updatedAt was null, re-fetch to return the actual stored timestamp
-            return getBackLocationByPlayerUuid(b.playerUuid()).orElseGet(() -> b);
+            try (ResultSet keys = ps.getGeneratedKeys()) {
+                if (!keys.next()) {
+                    throw new RuntimeException("No generated keys");
+                }
+                id = keys.getString(1);
+            }
         } catch (SQLException e) {
-            throw new RuntimeException("Error inserting back location for player=" + b.playerUuid(), e);
+            throw new RuntimeException("Error creating back location for playerUuid=" + playerUuid, e);
         }
+        return getBackLocationByPlayerUuid(id).orElseThrow(() ->
+                new RuntimeException("Post-fetch missing for playerUuid=" + playerUuid));
     }
 
+    // -- Read
+
     /**
-     * Retrieves a back-location by player UUID.
-     *
-     * @param playerUuid Player UUID.
-     * @return Optional containing the found {@link BackLocationDTO}, empty if none.
+     * Fetches a back location by {@code playerUuid}.
+     * @param playerUuid {@code playerUuid}.
+     * @return Optional containing the {@link BackLocationDTO} or empty if none found.
      * @throws RuntimeException on SQL errors.
      */
     public Optional<BackLocationDTO> getBackLocationByPlayerUuid(@NotNull String playerUuid) {
@@ -94,14 +159,13 @@ public final class BackLocationsCrudManager {
                 return Optional.of(map(rs));
             }
         } catch (SQLException e) {
-            throw new RuntimeException("Error fetching back location for player=" + playerUuid, e);
+            throw new RuntimeException("Error fetching back location for playerUuid=" + playerUuid, e);
         }
     }
 
     /**
-     * Lists all back-locations ordered by {@code updated_at} descending.
-     *
-     * @return List of {@link BackLocationDTO}.
+     * Lists all back locations.
+     * @return List of all {@link BackLocationDTO}, ordered by updated_at descending.
      * @throws RuntimeException on SQL errors.
      */
     public List<BackLocationDTO> getAllBackLocations() {
@@ -117,99 +181,78 @@ public final class BackLocationsCrudManager {
             while (rs.next()) out.add(map(rs));
             return out;
         } catch (SQLException e) {
-            throw new RuntimeException("Error listing back locations", e);
+            throw new RuntimeException("Error listing all back locations", e);
         }
     }
 
     /**
-     * Updates an existing back-location row by player UUID.
-     *
-     * @param playerUuid Player UUID (primary key).
-     * @param b          New values to set. {@code playerUuid} inside DTO is ignored.
-     * @return Optional containing the updated {@link BackLocationDTO}, empty if the row did not exist.
-     * @throws RuntimeException on SQL errors or unexpected empty fetch after update.
+     * Lists back locations in a paged manner.
+     * @param limit Maximum number of entries to return.
+     * @param offset Number of entries to skip.
+     * @return List of {@link BackLocationDTO}, ordered by updated_at descending.
+     * @throws RuntimeException on SQL errors.
      */
-    public Optional<BackLocationDTO> updateBackLocation(@NotNull String playerUuid, @NotNull BackLocationDTO b) {
-        if (getBackLocationByPlayerUuid(playerUuid).isEmpty()) return Optional.empty();
-
+    public List<BackLocationDTO> getAllBackLocationsPaged(int limit, int offset){
         final String sql = """
-                UPDATE sb_back_locations
-                SET updated_at = ?, previous_position_id = ?, current_position_id = ?
-                WHERE player_uuid = ?
+                SELECT player_uuid, updated_at, previous_position_id, current_position_id
+                FROM sb_back_locations
+                ORDER BY updated_at DESC
+                LIMIT ? OFFSET ?
                 """;
+        final List<BackLocationDTO> out = new ArrayList<>();
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, b.updatedAt());
-            ps.setLong(2, requireId(b.previousPositionId(), "previousPositionId"));
-            ps.setLong(3, requireId(b.currentPositionId(), "currentPositionId"));
-            ps.setString(4, playerUuid);
-            final int updated = ps.executeUpdate();
-            if (updated == 0) throw new RuntimeException("No back location updated for player=" + playerUuid);
-
-            return getBackLocationByPlayerUuid(playerUuid).map(x -> x).or(() -> {
-                throw new RuntimeException("Updated back location not found for player=" + playerUuid);
-            });
+            ps.setInt(1, limit);
+            ps.setInt(2, offset);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) out.add(map(rs));
+            }
+            return out;
         } catch (SQLException e) {
-            throw new RuntimeException("Error updating back location for player=" + playerUuid, e);
+            throw new RuntimeException("Error listing paged back locations", e);
         }
+    }
+
+    // -- Update
+
+    /**
+     * Updates an existing back location for the given {@code playerUuid}.
+     * @param playerUuid {@code playerUuid}.
+     * @param previousPosition Previous {@link PositionDTO}.
+     * @param newPosition New {@link PositionDTO}.
+     * @param updatedAt timestamp string to persist.
+     * @return The updated {@link BackLocationDTO}.
+     * @throws IllegalArgumentException if a back location for the {@code playerUuid}. does not exist.
+     * @throws RuntimeException on SQL errors or if no rows were affected.
+     */
+    public BackLocationDTO updateBackLocation(@NotNull String playerUuid,PositionDTO previousPosition, PositionDTO newPosition, @NotNull String updatedAt) {
+        if (!getBackLocationByPlayerUuid(playerUuid).isPresent()) {
+            throw new IllegalArgumentException("Back location for playerUuid=" + playerUuid + " does not exist");
+        }
+        deleteBackLocationByPlayerUuid(playerUuid);
+        return createBackLocation(playerUuid, updatedAt, previousPosition, newPosition);
     }
 
     // ------------------------- helpers -------------------------
 
     /**
-     * Convenience method to set both previous and current position ids.
-     *
-     * @param playerUuid         Player UUID.
-     * @param previousPositionId {@code sb_positions.id} to store as previous.
-     * @param currentPositionId  {@code sb_positions.id} to store as current.
-     * @param updatedAt          Timestamp string to persist.
-     * @return Optional containing the updated row or empty if the row did not exist.
-     * @throws RuntimeException on SQL errors.
+     * Deletes a back location by {@code playerUuid}.
+     * @param playerUuid {@code playerUuid}.
+     * @throws IllegalArgumentException if a back location for the {@code playerUuid}. does not exist.
+     * @throws RuntimeException on SQL errors or if no rows were affected.
      */
-    public Optional<BackLocationDTO> setPositions(@NotNull String playerUuid,
-                                                  long previousPositionId,
-                                                  long currentPositionId,
-                                                  @NotNull String updatedAt) {
-        if (getBackLocationByPlayerUuid(playerUuid).isEmpty()) return Optional.empty();
-
-        final String sql = """
-                UPDATE sb_back_locations
-                SET updated_at = ?, previous_position_id = ?, current_position_id = ?
-                WHERE player_uuid = ?
-                """;
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, updatedAt);
-            ps.setLong(2, previousPositionId);
-            ps.setLong(3, currentPositionId);
-            ps.setString(4, playerUuid);
-            ps.executeUpdate();
-            return getBackLocationByPlayerUuid(playerUuid);
-        } catch (SQLException e) {
-            throw new RuntimeException("Error setting positions for player=" + playerUuid, e);
+    public void deleteBackLocationByPlayerUuid(@NotNull String playerUuid) {
+        if (getBackLocationByPlayerUuid(playerUuid).isEmpty()) {
+            throw new IllegalArgumentException("Back location for playerUuid=" + playerUuid + " does not exist");
         }
-    }
-
-    /**
-     * Deletes a back-location row by player UUID.
-     *
-     * @param playerUuid Player UUID.
-     * @return Optional containing the pre-delete row or empty if none existed.
-     * @throws RuntimeException on SQL errors or if delete affects zero rows after existence check.
-     */
-    public Optional<BackLocationDTO> deleteBackLocationByPlayerUuid(@NotNull String playerUuid) {
-        final Optional<BackLocationDTO> before = getBackLocationByPlayerUuid(playerUuid);
-        if (before.isEmpty()) return Optional.empty();
-
         final String sql = "DELETE FROM sb_back_locations WHERE player_uuid = ?";
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, playerUuid);
             final int affected = ps.executeUpdate();
-            if (affected == 0) throw new RuntimeException("No back location deleted for player=" + playerUuid);
-            return before;
+            if (affected == 0) throw new RuntimeException("No back location deleted for playerUuid=" + playerUuid);
         } catch (SQLException e) {
-            throw new RuntimeException("Error deleting back location for player=" + playerUuid, e);
+            throw new RuntimeException("Error deleting back location for playerUuid=" + playerUuid, e);
         }
     }
 }
