@@ -1,6 +1,8 @@
 package as.sirhephaistos.simplybetter.core.db;
 
 import as.sirhephaistos.simplybetter.core.config.ConfigManager;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import net.fabricmc.loader.api.FabricLoader;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -24,23 +26,21 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * DatabaseManager (SimplyBetter Core)
- * Now uses ConfigManager to drive PRAGMAs and thread-pool sizing.
- * Default paths:
- * - Config dir: <fabricConfig>/simplybetter/
- * - DB file:    <fabricConfig>/simplybetter/simplybetter.db
- * - Schema:     classpath resource "simplybetter/schema.sql"
+ * Uses ConfigManager to drive PostgreSQL connection settings and thread-pool sizing.
+ * Uses HikariCP connection pool to avoid per-query TCP handshake overhead.
+ * Connection settings are configured in: <fabricConfig>/simplybetter/sbcore-conf.json
+ * Schema: classpath resource "simplybetter/schema.sql"
  * Usage:
  * DatabaseManager db = DatabaseManager.createDefault();
  * db.init(); // once on startup
  * try (Connection c = db.getConnection()) { do your query }
- * db.executor().submit(() -> { run async DB work here *});
+ * db.executor().submit(() -> { run async DB work here });
  * db.shutdown(Duration.ofSeconds(5)); // on shutdown
  */
 public final class DatabaseManager {
 
     // ---- Configuration constants ----
     private static final Logger LOGGER = LoggerFactory.getLogger("simplybetter-core-db");
-    private static final String DB_FILE_NAME = "simplybetter.db";
     private static final String SCHEMA_RESOURCE = "simplybetter/schema.sql";
 
     // Sentinel table to detect if the schema is already applied.
@@ -49,27 +49,25 @@ public final class DatabaseManager {
     private static final AtomicInteger THREAD_NUM = new AtomicInteger(0);
     // ---- Instance state ----
     private final Path configDir;        // <fabricConfig>/simplybetter
-    private final Path dbPathAbs;        // <fabricConfig>/simplybetter/simplybetter.db
     private final ConfigManager configManager;
     private volatile boolean initialized = false;
     private ExecutorService executor;
+    private HikariDataSource dataSource;
 
     // ---- Construction ----
 
     /**
-     * Creates a DatabaseManager for a specific absolute DB path inside a given config directory.
+     * Creates a DatabaseManager with the given config directory and ConfigManager.
      * Prefer using {@link #createDefault()} unless you have a special need.
      */
-    public DatabaseManager(Path configDir, Path absoluteDbPath, ConfigManager cfgManager) {
+    public DatabaseManager(Path configDir, ConfigManager cfgManager) {
         this.configDir = Objects.requireNonNull(configDir, "configDir");
-        this.dbPathAbs = Objects.requireNonNull(absoluteDbPath, "absoluteDbPath");
         this.configManager = Objects.requireNonNull(cfgManager, "configManager");
     }
 
     /**
      * Creates a DatabaseManager that targets the default Fabric config directory.
-     * DB will reside at: <config>/simplybetter/simplybetter.db
-     * If an old DB exists at <config>/simplybetter.db, it is migrated (moved) once.
+     * PostgreSQL connection settings are read from sbcore-conf.json.
      */
     public static DatabaseManager createDefault() {
         Path baseConfig = FabricLoader.getInstance().getConfigDir();
@@ -79,23 +77,7 @@ public final class DatabaseManager {
         ConfigManager cfg = ConfigManager.createDefault();
         cfg.loadOrCreate();
 
-        // Compute target DB path
-        Path newDbPath = sbDir.resolve(DB_FILE_NAME);
-
-        // Optional one-time migration from legacy path: <config>/simplybetter.db
-        Path legacyDbPath = baseConfig.resolve(DB_FILE_NAME);
-        if (Files.exists(legacyDbPath) && !Files.exists(newDbPath)) {
-            try {
-                Files.createDirectories(sbDir);
-                Files.move(legacyDbPath, newDbPath);
-//                LOGGER.info(() -> "Moved legacy DB to: " + newDbPath);
-                LOGGER.info("Migrated legacy DB from {} to {}", legacyDbPath, newDbPath);
-            } catch (IOException e) {
-                throw new IllegalStateException("Failed to migrate legacy DB from " + legacyDbPath + " to " + newDbPath, e);
-            }
-        }
-
-        return new DatabaseManager(sbDir, newDbPath, cfg);
+        return new DatabaseManager(sbDir, cfg);
     }
 
     // ---- Lifecycle ----
@@ -126,7 +108,7 @@ public final class DatabaseManager {
     /**
      * Removes SQL comments and normalizes newlines.
      * - Strips line comments starting with "--" until end-of-line.
-     * - Strips block comments /* ... *\/ across lines.
+     * - Strips block comments across lines.
      * - Normalizes line endings to '\n'.
      */
     private static String stripSqlComments(String sql) {
@@ -146,16 +128,6 @@ public final class DatabaseManager {
 
     /**
      * Splits a schema script into statements by semicolons.
-     * Preconditions for using this simple splitter:
-     * - Each SQL statement ends with a single ';'.
-     * - No semicolons appear inside string literals or triggers.
-     * - No BEGIN ... END blocks with internal ';'.
-     * Behavior:
-     * - Removes comments first.
-     * - Splits on ';'.
-     * - Trims each chunk.
-     * - Discards empty chunks.
-     * - If the file does not end with ';', the last non-empty chunk is kept as a statement.
      */
     private static java.util.List<String> splitSqlStatements(String sql) {
         String cleaned = stripSqlComments(sql);
@@ -173,10 +145,9 @@ public final class DatabaseManager {
 
     /**
      * Initializes the database:
-     * - Ensures parent directory exists.
-     * - Opens a connection to create the file if missing.
+     * - Ensures config directory exists.
+     * - Creates HikariCP connection pool to PostgreSQL.
      * - If schema is missing, applies it in a single transaction.
-     * - Applies SQLite PRAGMAs using a separate fresh connection (from ConfigManager).
      * - Starts the background executor (size from ConfigManager).
      * This method is idempotent: calling it twice throws an IllegalStateException to protect against double init.
      *
@@ -186,17 +157,18 @@ public final class DatabaseManager {
         if (initialized) {
             throw new IllegalStateException("DatabaseManager has already been initialized.");
         }
+        String masked = configManager.connectionString().replaceAll("://([^:]+):([^@]+)@", "://$1:****@");
         try {
-            // Ensure parent directories exist
+            // Ensure config directory exists
             Files.createDirectories(configDir);
-            Path parent = dbPathAbs.getParent();
-            if (parent != null) Files.createDirectories(parent);
 
-            final String jdbcUrl = jdbcUrl();
-            LOGGER.info("Initializing SimplyBetter DB at: {}", dbPathAbs);
-            // Open a short-lived connection to ensure file exists and to check/apply schemaz
-            Class.forName("org.sqlite.JDBC"); // ensure driver is loaded (usually automatic)
-            try (Connection conn = DriverManager.getConnection(jdbcUrl)) {
+            LOGGER.info("Initializing SimplyBetter DB with PostgreSQL at: {}", masked);
+
+            // Initialize HikariCP connection pool
+            initConnectionPool();
+
+            // Check/apply schema using a pooled connection
+            try (Connection conn = dataSource.getConnection()) {
                 if (!schemaExists(conn)) {
                     LOGGER.info("Schema not found. Applying schema from classpath: {}", SCHEMA_RESOURCE);
                     applySchema(conn); // transactional
@@ -205,9 +177,6 @@ public final class DatabaseManager {
                 }
             }
 
-            // Apply PRAGMAs in a separate fresh connection (respecting config)
-            String effectiveJournal = applyPragmasFromConfig();
-
             // Start executor AFTER successful init
             startExecutorFromConfig();
 
@@ -215,34 +184,56 @@ public final class DatabaseManager {
 
             // Log a concise summary
             int logical = Runtime.getRuntime().availableProcessors();
-            LOGGER.info("Database initialized: path={}, journalMode={}, synchronous={}, foreignKeys={}",
-                    dbPathAbs,
-                    effectiveJournal,
-                    configManager.synchronous(),
-                    configManager.foreignKeys());
+            LOGGER.info("Database initialized: connectionString={}", masked);
             // Also log ConfigManager summary via its own logger (Log4j)
             configManager.logSummary(logical);
 
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to initialize SimplyBetter database at " + dbPathAbs, e);
+            // Clean up pool if init fails partway
+            if (dataSource != null && !dataSource.isClosed()) {
+                dataSource.close();
+            }
+            throw new IllegalStateException("Failed to initialize SimplyBetter database at " + masked, e);
         }
     }
 
     /**
-     * Opens a new short-lived connection to the SQLite database.
-     * Always enable foreign key enforcement and a reasonable busy timeout.
+     * Creates the HikariCP connection pool.
+     * Connections are validated automatically — HikariCP handles:
+     * - keepaliveTime: pings idle connections every 30s to keep them alive
+     * - maxLifetime: rotates connections every 10min so they never go stale
+     * - connectionTestQuery: validates each connection before handing it out
+     * - minimumIdle: always keeps connections ready in the pool
+     */
+    private void initConnectionPool() {
+        int logical = Runtime.getRuntime().availableProcessors();
+        int poolSize = configManager.effectiveThreadCount(logical);
+
+        HikariConfig hikari = new HikariConfig();
+        hikari.setJdbcUrl(configManager.jdbcUrl());
+        hikari.setUsername(configManager.dbUser());
+        hikari.setPassword(configManager.dbPassword());
+        hikari.setPoolName("SimplyBetter-DB-Pool");
+        hikari.setMaximumPoolSize(poolSize + 2); // a bit more than executor threads
+        hikari.setMinimumIdle(2);                 // always keep 2 connections warm
+        hikari.setIdleTimeout(600_000);           // 10 min idle before eviction
+        hikari.setMaxLifetime(600_000);           // 10 min — rotate connections automatically
+        hikari.setConnectionTimeout(10_000);      // 10s to get a connection from pool
+        hikari.setKeepaliveTime(30_000);          // ping every 30s to keep connections alive
+        hikari.setConnectionTestQuery("SELECT 1");// validate before handing out
+
+        this.dataSource = new HikariDataSource(hikari);
+        LOGGER.info("HikariCP pool initialized: maxPoolSize={}, minIdle=2, maxLifetime=10min, keepalive=30s", poolSize + 2);
+    }
+
+    /**
+     * Returns a connection from the HikariCP pool (sub-millisecond).
      */
     public Connection getConnection() throws SQLException {
         if (!initialized) {
             throw new SQLException("Database not initialized. Call init() first.");
         }
-        Connection conn = DriverManager.getConnection(jdbcUrl());
-        try (Statement s = conn.createStatement()) {
-            // Keep per-connection safety knobs
-            s.execute("PRAGMA foreign_keys = ON;");
-            s.execute("PRAGMA busy_timeout = 5000;");
-        }
-        return conn;
+        return dataSource.getConnection();
     }
 
     // ---- Internal helpers ----
@@ -259,52 +250,59 @@ public final class DatabaseManager {
     }
 
     /**
-     * Gracefully shuts down the DB executor within the given timeout.
+     * Gracefully shuts down the DB executor and connection pool within the given timeout.
      */
     @SuppressWarnings("ResultOfMethodCallIgnored")
     public void shutdown(Duration timeout) {
         ExecutorService ex = this.executor;
-        if (ex == null) return;
-
-        ex.shutdown();
-        try {
-            if (!ex.awaitTermination(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
+        if (ex != null) {
+            ex.shutdown();
+            try {
+                if (!ex.awaitTermination(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
+                    ex.shutdownNow();
+                    ex.awaitTermination(timeout.toMillis(), TimeUnit.MILLISECONDS);
+                }
+            } catch (InterruptedException ie) {
                 ex.shutdownNow();
-                ex.awaitTermination(timeout.toMillis(), TimeUnit.MILLISECONDS);
+                Thread.currentThread().interrupt();
             }
-        } catch (InterruptedException ie) {
-            ex.shutdownNow();
-            Thread.currentThread().interrupt();
+        }
+        // Close connection pool
+        if (dataSource != null && !dataSource.isClosed()) {
+            dataSource.close();
+            LOGGER.info("HikariCP pool closed.");
         }
     }
 
     /**
-     * Deletes the DB file and re-initializes it with the current schema.
+     * Drops all SimplyBetter tables and re-initializes the schema.
      */
     public synchronized void reset(Duration shutdownTimeout) {
         shutdown(shutdownTimeout);
-        try {
-            Files.deleteIfExists(dbPathAbs);
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to delete DB file at " + dbPathAbs, e);
+        try (Connection conn = DriverManager.getConnection(
+                configManager.jdbcUrl(), configManager.dbUser(), configManager.dbPassword());
+             Statement st = conn.createStatement()) {
+            st.execute("DROP SCHEMA public CASCADE");
+            st.execute("CREATE SCHEMA public");
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to reset database schema", e);
         }
         initialized = false;
         init();
     }
 
-    private String jdbcUrl() {
-        return "jdbc:sqlite:" + dbPathAbs.toAbsolutePath();
-    }
-
     /**
-     * Checks if the sentinel table exists in sqlite_master.
+     * Checks if the sentinel table exists, honoring the connection's search_path.
+     * Uses to_regclass() so the lookup follows whatever schema the role's
+     * search_path points at (`public` for standalone deployments, or a custom
+     * schema like `sbs` when the unified DB sets `search_path TO sbs, public`).
      */
     private boolean schemaExists(Connection conn) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1")) {
+                "SELECT to_regclass(?) IS NOT NULL")) {
             ps.setString(1, SENTRY_TABLE);
             try (ResultSet rs = ps.executeQuery()) {
-                return rs.next();
+                return rs.next() && rs.getBoolean(1);
             }
         }
     }
@@ -331,37 +329,6 @@ public final class DatabaseManager {
         } finally {
             conn.setAutoCommit(true);
         }
-    }
-
-    /**
-     * Applies PRAGMAs from ConfigManager using a fresh connection.
-     */
-    private String applyPragmasFromConfig() {
-        String requestedJournal = configManager.journalMode();
-        String sync = configManager.synchronous();
-        boolean fk = configManager.foreignKeys();
-        String effectiveJournal = requestedJournal;
-
-        try (Connection c = DriverManager.getConnection(jdbcUrl());
-             Statement s = c.createStatement()) {
-            // journal_mode returns the effective mode in a one-row result set
-            try (ResultSet rs = s.executeQuery("PRAGMA journal_mode = " + requestedJournal + ";")) {
-                if (rs.next()) {
-                    effectiveJournal = rs.getString(1);
-                }
-            }
-            s.execute("PRAGMA synchronous = " + sync + ";");
-            s.execute("PRAGMA foreign_keys = " + (fk ? "ON" : "OFF") + ";");
-            s.execute("PRAGMA busy_timeout = 5000;");
-        } catch (SQLException e) {
-            throw new IllegalStateException("Failed to apply SQLite PRAGMAs from config.", e);
-        }
-        if (!requestedJournal.equalsIgnoreCase(effectiveJournal)) {
-            LOGGER.warn("Requested journal_mode={}, but SQLite applied={}",
-                    requestedJournal,
-                    effectiveJournal);
-        }
-        return effectiveJournal;
     }
 
     /**

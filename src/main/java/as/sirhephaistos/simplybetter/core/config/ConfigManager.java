@@ -9,12 +9,10 @@ import org.apache.logging.log4j.Logger;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
-import java.lang.reflect.Type;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
-import java.util.Locale;
 import java.util.Objects;
 
 /**
@@ -24,9 +22,8 @@ import java.util.Objects;
  *
  * Fields:
  *  - threadCount: Integer or null (auto). When set, clamped to [2, 16].
- *  - journalMode: one of WAL, DELETE, TRUNCATE, MEMORY, PERSIST, OFF. (default WAL)
- *  - synchronous: one of OFF, NORMAL, FULL, EXTRA. (default NORMAL)
- *  - foreignKeys: boolean (default true)
+ *  - connectionString: PostgreSQL connection string
+ *    e.g. "postgresql://user:password@host:port/database"
  *
  * Behavior:
  *  - Creates file with defaults if missing.
@@ -121,19 +118,59 @@ public final class ConfigManager {
         return value;
     }
 
-    public String journalMode() { return config.journalMode; }
+    /**
+     * Returns the connection string as-is from config.
+     * e.g. "postgresql://user:password@host:port/database"
+     */
+    public String connectionString() { return config.connectionString; }
 
-    public String synchronous() { return config.synchronous; }
+    /**
+     * Parses the connection string and returns the JDBC URL (without credentials).
+     * "postgresql://user:pass@host:port/db" -> "jdbc:postgresql://host:port/db"
+     */
+    public String jdbcUrl() {
+        URI uri = URI.create(config.connectionString);
+        String host = uri.getHost();
+        int port = uri.getPort();
+        String path = uri.getPath(); // e.g. "/sbs"
+        String query = uri.getRawQuery();
+        return "jdbc:postgresql://" + host + (port > 0 ? ":" + port : "") + path
+                + (query != null && !query.isBlank() ? "?" + query : "");
+    }
 
-    public boolean foreignKeys() { return config.foreignKeys; }
+    /**
+     * Extracts the username from the connection string.
+     * "postgresql://user:pass@host:port/db" -> "user"
+     */
+    public String dbUser() {
+        URI uri = URI.create(config.connectionString);
+        String userInfo = uri.getUserInfo();
+        if (userInfo == null) return null;
+        int colon = userInfo.indexOf(':');
+        return colon >= 0 ? userInfo.substring(0, colon) : userInfo;
+    }
+
+    /**
+     * Extracts the password from the connection string.
+     * "postgresql://user:pass@host:port/db" -> "pass"
+     */
+    public String dbPassword() {
+        URI uri = URI.create(config.connectionString);
+        String userInfo = uri.getUserInfo();
+        if (userInfo == null) return null;
+        int colon = userInfo.indexOf(':');
+        return colon >= 0 ? userInfo.substring(colon + 1) : null;
+    }
 
     public Path filePath() { return filePath; }
 
     /** Log a compact summary of the effective settings. */
     public void logSummary(int detectedLogicalProcessors) {
         int pool = effectiveThreadCount(detectedLogicalProcessors);
-        LOGGER.info("Config: threads={}, logicalCPUs={}, journalMode={}, synchronous={}, foreignKeys={}",
-                pool, detectedLogicalProcessors, journalMode(), synchronous(), foreignKeys());
+        // Log connection string with password masked
+        String masked = config.connectionString.replaceAll("://([^:]+):([^@]+)@", "://$1:****@");
+        LOGGER.info("Config: threads={}, logicalCPUs={}, connectionString={}",
+                pool, detectedLogicalProcessors, masked);
     }
 
     // ---------------------- normalization & defaults ----------------------
@@ -150,76 +187,32 @@ public final class ConfigManager {
             out.threadCount = in.threadCount; // may be null
         }
 
-        // journalMode: normalize to upper, validate against allowlist
-        String jm = nonEmptyUpper(in.journalMode);
-        if (!JournalMode.isValid(jm)) {
-            out.journalMode = Config.DEFAULT_JOURNAL_MODE;
+        // connectionString
+        if (in.connectionString == null || in.connectionString.isBlank()) {
+            out.connectionString = Config.DEFAULT_CONNECTION_STRING;
             rewrite = true;
         } else {
-            out.journalMode = jm;
+            out.connectionString = in.connectionString.trim();
         }
-
-        // synchronous
-        String sync = nonEmptyUpper(in.synchronous);
-        if (!Synchronous.isValid(sync)) {
-            out.synchronous = Config.DEFAULT_SYNCHRONOUS;
-            rewrite = true;
-        } else {
-            out.synchronous = sync;
-        }
-
-        // foreign keys
-        out.foreignKeys = in.foreignKeys;
 
         return new NormalizationResult(out, rewrite);
     }
 
-    private static String nonEmptyUpper(String v) {
-        if (v == null) return null;
-        String t = v.trim();
-        if (t.isEmpty()) return null;
-        return t.toUpperCase(Locale.ROOT);
-
-    }
-
     private record NormalizationResult(Config normalized, boolean rewrite) {}
 
-    // ---------------------- types & enums ----------------------
+    // ---------------------- types ----------------------
 
     /** Public shape of JSON config. Keep fields simple for Gson. */
     public static final class Config {
-        static final String DEFAULT_JOURNAL_MODE = JournalMode.WAL.name();
-        static final String DEFAULT_SYNCHRONOUS = Synchronous.NORMAL.name();
+        static final String DEFAULT_CONNECTION_STRING = "postgresql://simplybetter:password@localhost:5432/simplybetter";
 
         /** null = auto (heuristic) */
         @SerializedName("threadCount")
         public Integer threadCount = null;
 
-        @SerializedName("journalMode")
-        public String journalMode = DEFAULT_JOURNAL_MODE;
-
-        @SerializedName("synchronous")
-        public String synchronous = DEFAULT_SYNCHRONOUS;
-
-        @SerializedName("foreignKeys")
-        public boolean foreignKeys = true;
+        @SerializedName("connectionString")
+        public String connectionString = DEFAULT_CONNECTION_STRING;
 
         public static Config defaults() { return new Config(); }
-    }
-
-    public enum JournalMode {
-        WAL, DELETE, TRUNCATE, MEMORY, PERSIST, OFF;
-        public static boolean isValid(String s) {
-            if (s == null) return false;
-            try { JournalMode.valueOf(s); return true; } catch (IllegalArgumentException ex) { return false; }
-        }
-    }
-
-    public enum Synchronous {
-        OFF, NORMAL, FULL, EXTRA;
-        public static boolean isValid(String s) {
-            if (s == null) return false;
-            try { Synchronous.valueOf(s); return true; } catch (IllegalArgumentException ex) { return false; }
-        }
     }
 }

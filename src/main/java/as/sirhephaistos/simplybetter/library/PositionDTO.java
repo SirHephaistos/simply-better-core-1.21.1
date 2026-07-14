@@ -9,6 +9,7 @@ public record PositionDTO(
         double x,
         double y,
         double z,
-        float yaw,
-        float pitch
-) {}
+        float yRot, //yaw
+        float xRot  //pitch
+) {
+}

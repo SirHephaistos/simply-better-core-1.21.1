@@ -3,15 +3,15 @@
 	"id": "simplybetter-core",
 	"version": "${version}",
 	"name": "Simply Better Core",
-	"description": "This is an example description! Tell everyone what your mod is about!",
+	"description": "The central module of the suite.\nIt initializes the shared database, manages configuration files, handles permission checks, and exposes a unified API that all other modules rely on.\nEvery Simply Better module requires the Core to function.",
 	"authors": [
-		"Me!"
+		"Sir Hephaistos"
 	],
 	"contact": {
 		"homepage": "https://fabricmc.net/",
 		"sources": "https://github.com/FabricMC/fabric-example-mod"
 	},
-	"license": "CC0-1.0",
+	"license": "MIT",
 	"icon": "assets/simplybetter-core/icon.png",
 	"environment": "*",
 	"entrypoints": {

@@ -16,23 +16,27 @@ import java.util.Optional;
  * <img src="https://docs-sbs.godsmg.com/~gitbook/image?url=https%3A%2F%2F655127117-files.gitbook.io%2F%7E%2Ffiles%2Fv0%2Fb%2Fgitbook-x-prod.appspot.com%2Fo%2Forganizations%252FpIa3Cyk1OAYwYiLI3sxf%252Fsites%252Fsite_ofAiW%252Ficon%252F9SRBPTo3OKBsw5DvBwL3%252FChatGPT%2520Image%252025%2520oct.%25202025%252C%252000_07_28.png%3Falt%3Dmedia%26token%3D396dda36-5693-4638-b53e-59bf0770f309&width=32&dpr=1&quality=100&sign=55c114e6&sv=2"></img> </h1>
  * <h2>Create Methods</h2>
  * <ul>
- *     <li>{@link #method}:</br>
- *         Description. And returns {}. </li>
+ *     <li>{@link #createBackLocation}:</br>
+ *  *         Creates a new back location entry for the given {@code playerUuid}. And returns the created {@link BackLocationDTO}.</li>
  * </ul>
  * <h2>Read Methods</h2>
  * <ul>
- *     <li>{@link #method}:</br>
- *         Description. And returns {}. </li>
+ *     <li>{@link #getBackLocationByPlayerUuid}:</br>
+ *         Fetches a back location by {@code playerUuid}. And returns an Optional containing the {@link BackLocationDTO} or empty if none found.</li>
+ *     <li>{@link #getAllBackLocations}:</br>
+ *         Lists all back locations. And returns a List of all {@link BackLocationDTO}, ordered by updated_at descending.</li>
+ *     <li>{@link #getAllBackLocationsPaged}:</br>
+ *         Lists back locations in a paged manner. And returns a List of {@link BackLocationDTO}, ordered by updated_at descending.</li>
  * </ul>
  * <h2>Update Methods</h2>
  * <ul>
- *     <li>{@link #method}:</br>
- *         Description. And returns {}. </li>
+ *     <li>{@link #updateBackLocation}:</br>
+ *         Updates an existing back location for the given {@code playerUuid}. And returns the updated {@link BackLocationDTO}.</li>
  * </ul>
  * <h2>Delete Methods</h2>
  * <ul>
- *     <li>{@link #method}:</br>
- *         Description</li>
+ *      <li>{@link #deleteBackLocationByPlayerUuid}:</br>
+ *          Deletes a back location by {@code playerUuid}.</li>
  * </ul>
  *
  *<h3>General Information</h3>
@@ -95,8 +99,8 @@ public final class BackLocationsCrudManager {
                     previousPosition.x(),
                     previousPosition.y(),
                     previousPosition.z(),
-                    previousPosition.yaw(),
-                    previousPosition.pitch()
+                    previousPosition.yRot(),
+                    previousPosition.xRot()
             );
         }
         if (currentPosition.id() == null) {
@@ -105,17 +109,17 @@ public final class BackLocationsCrudManager {
                     currentPosition.x(),
                     currentPosition.y(),
                     currentPosition.z(),
-                    currentPosition.yaw(),
-                    currentPosition.pitch()
+                    currentPosition.yRot(),
+                    currentPosition.xRot()
             );
         }
         if (previousPosition.id() == null || currentPosition.id() == null) {
             throw new IllegalStateException("Position IDs must not be null after creation");
         }
-        String id;
         final String sql = """
                 INSERT INTO sb_back_locations (player_uuid, updated_at, previous_position_id, current_position_id)
                 VALUES (?, ?, ?, ?)
+                RETURNING player_uuid, updated_at, previous_position_id, current_position_id
                 """;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -123,18 +127,15 @@ public final class BackLocationsCrudManager {
             ps.setString(2, updatedAt);
             ps.setLong(3, previousPosition.id());
             ps.setLong(4, currentPosition.id());
-            ps.executeUpdate();
-            try (ResultSet keys = ps.getGeneratedKeys()) {
-                if (!keys.next()) {
-                    throw new RuntimeException("No generated keys");
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new RuntimeException("INSERT RETURNING produced no row for playerUuid=" + playerUuid);
                 }
-                id = keys.getString(1);
+                return map(rs);
             }
         } catch (SQLException e) {
             throw new RuntimeException("Error creating back location for playerUuid=" + playerUuid, e);
         }
-        return getBackLocationByPlayerUuid(id).orElseThrow(() ->
-                new RuntimeException("Post-fetch missing for playerUuid=" + playerUuid));
     }
 
     // -- Read
@@ -226,7 +227,7 @@ public final class BackLocationsCrudManager {
      * @throws RuntimeException on SQL errors or if no rows were affected.
      */
     public BackLocationDTO updateBackLocation(@NotNull String playerUuid,PositionDTO previousPosition, PositionDTO newPosition, @NotNull String updatedAt) {
-        if (!getBackLocationByPlayerUuid(playerUuid).isPresent()) {
+        if (getBackLocationByPlayerUuid(playerUuid).isEmpty()) {
             throw new IllegalArgumentException("Back location for playerUuid=" + playerUuid + " does not exist");
         }
         deleteBackLocationByPlayerUuid(playerUuid);
@@ -245,12 +246,19 @@ public final class BackLocationsCrudManager {
         if (getBackLocationByPlayerUuid(playerUuid).isEmpty()) {
             throw new IllegalArgumentException("Back location for playerUuid=" + playerUuid + " does not exist");
         }
-        final String sql = "DELETE FROM sb_back_locations WHERE player_uuid = ?";
+        final String sql = """
+                DELETE FROM sb_back_locations
+                WHERE player_uuid = ?
+                RETURNING player_uuid, updated_at, previous_position_id, current_position_id
+                """;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, playerUuid);
-            final int affected = ps.executeUpdate();
-            if (affected == 0) throw new RuntimeException("No back location deleted for playerUuid=" + playerUuid);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new RuntimeException("No back location deleted for playerUuid=" + playerUuid);
+                }
+            }
         } catch (SQLException e) {
             throw new RuntimeException("Error deleting back location for playerUuid=" + playerUuid, e);
         }

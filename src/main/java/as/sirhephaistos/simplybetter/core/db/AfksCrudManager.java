@@ -1,6 +1,5 @@
 package as.sirhephaistos.simplybetter.core.db;
 
-import as.sirhephaistos.simplybetter.library.AccountDTO;
 import as.sirhephaistos.simplybetter.library.AfkDTO;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -96,26 +95,26 @@ public final class AfksCrudManager {
         final String sql = """
                 INSERT INTO sb_afks (player_uuid, since, message)
                 VALUES (?, ?, ?)
+                RETURNING
+                    player_uuid AS a_player_uuid,
+                    since       AS a_since,
+                    message     AS a_message
                 """;
-        String id;
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setString(1, playerUuid);
             ps.setString(2, since);
             if (message == null) ps.setNull(3, Types.VARCHAR);
             else ps.setString(3, message);
-            ps.executeUpdate();
-            try (ResultSet keys = ps.getGeneratedKeys()) {
-                if (!keys.next()) {
-                    throw new RuntimeException("No generated keys");
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new RuntimeException("createAfk: RETURNING produced no rows for playerUuid=" + playerUuid);
                 }
-                id = keys.getString(1);
+                return mapAfk(rs);
             }
         } catch (SQLException e) {
             throw new RuntimeException("createAfk: failed for playerUuid=" + playerUuid, e);
         }
-        return getAfkByPlayerUuid(id)
-                .orElseThrow(() -> new RuntimeException("createAfk: post-fetch missing for playerUuid=" + playerUuid));
     }
 
     // -- Read
@@ -241,6 +240,10 @@ public final class AfksCrudManager {
                 UPDATE sb_afks
                 SET since = ?, message = ?
                 WHERE player_uuid = ?
+                RETURNING
+                    player_uuid AS a_player_uuid,
+                    since       AS a_since,
+                    message     AS a_message
                 """;
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
@@ -248,13 +251,15 @@ public final class AfksCrudManager {
             if (message == null) ps.setNull(2, Types.VARCHAR);
             else ps.setString(2, message);
             ps.setString(3, playerUuid);
-            final int upd = ps.executeUpdate();
-            if (upd == 0) throw new RuntimeException("updateAfk: affected 0 rows for playerUuid=" + playerUuid);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new RuntimeException("updateAfk: affected 0 rows for playerUuid=" + playerUuid);
+                }
+                return mapAfk(rs);
+            }
         } catch (SQLException e) {
             throw new RuntimeException("updateAfk: failed for playerUuid=" + playerUuid, e);
         }
-        return getAfkByPlayerUuid(playerUuid)
-                .orElseThrow(() -> new RuntimeException("updateAfk: post-fetch missing for playerUuid=" + playerUuid));
     }
 
     /**
@@ -269,19 +274,25 @@ public final class AfksCrudManager {
                 UPDATE sb_afks
                 SET message = ?
                 WHERE player_uuid = ?
+                RETURNING
+                    player_uuid AS a_player_uuid,
+                    since       AS a_since,
+                    message     AS a_message
                 """;
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             if (message == null) ps.setNull(1, Types.VARCHAR);
             else ps.setString(1, message);
             ps.setString(2, playerUuid);
-            final int upd = ps.executeUpdate();
-            if (upd == 0) throw new RuntimeException("setAfkMessage: affected 0 rows for playerUuid=" + playerUuid);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new RuntimeException("setAfkMessage: affected 0 rows for playerUuid=" + playerUuid);
+                }
+                return mapAfk(rs);
+            }
         } catch (SQLException e) {
             throw new RuntimeException("setAfkMessage: failed for playerUuid=" + playerUuid, e);
         }
-        return getAfkByPlayerUuid(playerUuid)
-                .orElseThrow(() -> new RuntimeException("setAfkMessage: post-fetch missing for playerUuid=" + playerUuid));
     }
 
     /**
@@ -296,18 +307,24 @@ public final class AfksCrudManager {
                 UPDATE sb_afks
                 SET since = ?
                 WHERE player_uuid = ?
+                RETURNING
+                    player_uuid AS a_player_uuid,
+                    since       AS a_since,
+                    message     AS a_message
                 """;
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setString(1, since);
             ps.setString(2, playerUuid);
-            final int upd = ps.executeUpdate();
-            if (upd == 0) throw new RuntimeException("setAfkSinceSeconds: affected 0 rows for playerUuid=" + playerUuid);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new RuntimeException("setAfkSince: affected 0 rows for playerUuid=" + playerUuid);
+                }
+                return mapAfk(rs);
+            }
         } catch (SQLException e) {
-            throw new RuntimeException("setAfkSinceSeconds: failed for playerUuid=" + playerUuid, e);
+            throw new RuntimeException("setAfkSince: failed for playerUuid=" + playerUuid, e);
         }
-        return getAfkByPlayerUuid(playerUuid)
-                .orElseThrow(() -> new RuntimeException("setAfkSinceSeconds: post-fetch missing for playerUuid=" + playerUuid));
     }
 
     // -- Delete
@@ -329,8 +346,8 @@ public final class AfksCrudManager {
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setString(1, playerUuid);
-            ps.executeUpdate();
-            if (ps.executeUpdate() == 0) {
+            final int upd = ps.executeUpdate();
+            if (upd == 0) {
                 throw new RuntimeException("deleteAfkByPlayerUuid: affected 0 rows for playerUuid=" + playerUuid);
             }
             if (existsAfkForPlayer(playerUuid)) {

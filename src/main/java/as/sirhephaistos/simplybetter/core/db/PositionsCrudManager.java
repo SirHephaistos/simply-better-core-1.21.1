@@ -15,6 +15,8 @@ import java.util.Optional;
  * <ul>
  *     <li>{@link #createPosition(String, double, double, double, float, float)}:</br>
  *     Creates a new position in the database and returns its generated ID. </li>
+ *     <li> {@link #createPosition(PositionDTO)}:</br>
+ *         Creates a new position using a {@link PositionDTO} object. Returns the created {@link PositionDTO}. </li>
  * </ul>
  * <h2>Read Methods</h2>
  * <ul>
@@ -69,9 +71,9 @@ public final class PositionsCrudManager {
         final double x = rs.getDouble("x");
         final double y = rs.getDouble("y");
         final double z = rs.getDouble("z");
-        final float yaw = rs.getFloat("orientation_yaw");
-        final float pitch = rs.getFloat("orientation_pitch");
-        return new PositionDTO(id,dimensionId, x, y, z, yaw, pitch);
+        final float yRot = rs.getFloat("orientation_yRotation");
+        final float xRot = rs.getFloat("orientation_xRotation");
+        return new PositionDTO(id,dimensionId, x, y, z, yRot, xRot);
     }
 
     // -- Create
@@ -82,37 +84,32 @@ public final class PositionsCrudManager {
      * @param x the x coordinate.
      * @param y the y coordinate.
      * @param z the z coordinate.
-     * @param yaw the yaw orientation.
-     * @param pitch the pitch orientation.
+     * @param yRot the yRot orientation.
+     * @param xRot the xRot orientation.
      * @return the created {@link PositionDTO}.
      * @throws RuntimeException on SQL errors coming from jdbc.
      */
-    public PositionDTO createPosition(@NotNull String dimensionId, double x, double y, double z, float yaw, float pitch) {
+    public PositionDTO createPosition(@NotNull String dimensionId, double x, double y, double z, float yRot, float xRot) {
         final String sql = """
-                INSERT INTO sb_positions (dimension_id, x, y, z, orientation_yaw, orientation_pitch)
+                INSERT INTO sb_positions (dimension_id, x, y, z, orientation_yRotation, orientation_xRotation)
                 VALUES (?, ?, ?, ?, ?, ?)
+                RETURNING id, dimension_id, x, y, z, orientation_yRotation, orientation_xRotation
                 """;
-        final long id;
         try (Connection conn = db.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, dimensionId);
             stmt.setDouble(2, x);
             stmt.setDouble(3, y);
             stmt.setDouble(4, z);
-            stmt.setFloat(5, yaw);
-            stmt.setFloat(6, pitch);
-            final int affected = stmt.executeUpdate();
-            if (affected == 0) throw new RuntimeException("Creating position failed, no rows affected.");
-            try (ResultSet keys = stmt.getGeneratedKeys()) {
-                if (!keys.next()) {
-                    throw new RuntimeException("No generated key");
-                }
-                id = keys.getLong(1);
+            stmt.setFloat(5, yRot);
+            stmt.setFloat(6, xRot);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) throw new RuntimeException("Creating position failed, no rows returned.");
+                return mapPosition(rs);
             }
         } catch (SQLException e) {
             throw new RuntimeException("Error creating position", e);
         }
-        return getPositionById(id).orElseThrow(() -> new RuntimeException("Created position not found with id: " + id));
     }
 
     /**
@@ -127,8 +124,8 @@ public final class PositionsCrudManager {
                 position.x(),
                 position.y(),
                 position.z(),
-                position.yaw(),
-                position.pitch()
+                position.yRot(),
+                position.xRot()
         );
     }
 
@@ -142,7 +139,7 @@ public final class PositionsCrudManager {
      */
     public Optional<PositionDTO> getPositionById(long id) {
         final String sql = """
-                SELECT dimension_id, x, y, z, orientation_yaw, orientation_pitch
+                SELECT id,dimension_id, x, y, z, orientation_yRotation, orientation_xRotation
                 FROM sb_positions
                 WHERE id = ?
                 """;
@@ -165,7 +162,7 @@ public final class PositionsCrudManager {
      */
     public List<PositionDTO> getAllPositions() {
         final String sql = """
-                SELECT dimension_id, x, y, z, orientation_yaw, orientation_pitch
+                SELECT id, dimension_id, x, y, z, orientation_yRotation, orientation_xRotation
                 FROM sb_positions
                 ORDER BY id ASC
                 """;
@@ -191,7 +188,7 @@ public final class PositionsCrudManager {
      */
     public List<PositionDTO> getAllPositionsPaged(int limit, int offset) {
         final String sql = """
-                SELECT dimension_id, x, y, z, orientation_yaw, orientation_pitch
+                SELECT id, dimension_id, x, y, z, orientation_yRotation, orientation_xRotation
                 FROM sb_positions
                 ORDER BY id ASC
                 LIMIT ? OFFSET ?
@@ -223,12 +220,11 @@ public final class PositionsCrudManager {
      * @return An {@link Optional} containing the updated {@link PositionDTO} if the update was successful, or an empty if failed.
      */
     public Optional<PositionDTO> updatePosition(long id, @NotNull PositionDTO position) {
-        final Optional<PositionDTO> before = getPositionById(id);
-        if (before.isEmpty()) return Optional.empty();
         final String sql = """
                 UPDATE sb_positions
-                SET dimension_id = ?, x = ?, y = ?, z = ?, orientation_yaw = ?, orientation_pitch = ?
+                SET dimension_id = ?, x = ?, y = ?, z = ?, orientation_yRotation = ?, orientation_xRotation = ?
                 WHERE id = ?
+                RETURNING id, dimension_id, x, y, z, orientation_yRotation, orientation_xRotation
                 """;
         try (Connection conn = db.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -236,13 +232,16 @@ public final class PositionsCrudManager {
             stmt.setDouble(2, position.x());
             stmt.setDouble(3, position.y());
             stmt.setDouble(4, position.z());
-            stmt.setFloat(5, position.yaw());
-            stmt.setFloat(6, position.pitch());
+            stmt.setFloat(5, position.yRot());
+            stmt.setFloat(6, position.xRot());
             stmt.setLong(7, id);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) return Optional.empty();
+                return Optional.of(mapPosition(rs));
+            }
         } catch (SQLException e) {
             throw new RuntimeException("Error updating position id=" + id, e);
         }
-        return getPositionById(id);
     }
 
     // -- Delete
@@ -254,8 +253,6 @@ public final class PositionsCrudManager {
      */
     public void deletePositionById(long id) {
         final String sql = "DELETE FROM sb_positions WHERE id = ?";
-        final Optional<PositionDTO> before = getPositionById(id);
-
         try (Connection conn = db.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, id);

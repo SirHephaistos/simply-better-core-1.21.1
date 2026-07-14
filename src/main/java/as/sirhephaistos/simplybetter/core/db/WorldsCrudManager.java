@@ -97,27 +97,25 @@ public final class WorldsCrudManager {
         final String sql = """
                 INSERT INTO sb_worlds (dimension_id, center_position_id)
                 VALUES (?, ?)
+                RETURNING id, dimension_id, center_position_id
                 """;
-        long id;
         try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, dimensionId);
             if (centerPositionId == null) {
                 ps.setNull(2, Types.BIGINT);
             } else {
                 ps.setLong(2, centerPositionId);
             }
-            ps.executeUpdate();
-            try (ResultSet keys = ps.getGeneratedKeys()) {
-                if (!keys.next()) {
-                    throw new RuntimeException("No generated key");
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new RuntimeException("INSERT RETURNING produced no row for dimension=" + dimensionId);
                 }
-                id = keys.getLong(1);
+                return mapWorld(rs);
             }
         } catch (SQLException e) {
             throw new RuntimeException("Error inserting world for dimension=" + dimensionId, e);
         }
-        return getWorldById(id).orElseThrow(() -> new RuntimeException("Error fetching newly created world with id=" + id));
     }
 
     // -- Read
@@ -237,14 +235,16 @@ public final class WorldsCrudManager {
                 UPDATE sb_worlds
                 SET dimension_id = ?
                 WHERE id = ?
+                RETURNING id, dimension_id, center_position_id
                 """;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, newDimensionId);
             ps.setLong(2, id);
-            final int affected = ps.executeUpdate();
-            if (affected == 0) throw new RuntimeException("No world updated for id=" + id);
-            return getWorldById(id);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) throw new RuntimeException("No world updated for id=" + id);
+                return Optional.of(mapWorld(rs));
+            }
         } catch (SQLException e) {
             throw new RuntimeException("Error renaming world id=" + id, e);
         }
@@ -265,14 +265,16 @@ public final class WorldsCrudManager {
                 UPDATE sb_worlds
                 SET dimension_id = ?
                 WHERE dimension_id = ?
+                RETURNING id, dimension_id, center_position_id
                 """;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, newDimensionId);
             ps.setString(2, currentDimensionId);
-            final int affected = ps.executeUpdate();
-            if (affected == 0) throw new RuntimeException("No world updated for dimension_id=" + currentDimensionId);
-            return getWorldByDimensionId(newDimensionId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) throw new RuntimeException("No world updated for dimension_id=" + currentDimensionId);
+                return Optional.of(mapWorld(rs));
+            }
         } catch (SQLException e) {
             throw new RuntimeException("Error renaming world dimension_id=" + currentDimensionId, e);
         }
@@ -293,6 +295,7 @@ public final class WorldsCrudManager {
                 UPDATE sb_worlds
                 SET center_position_id = ?
                 WHERE id = ?
+                RETURNING id, dimension_id, center_position_id
                 """;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -302,9 +305,10 @@ public final class WorldsCrudManager {
                 ps.setLong(1, newCenterPositionId);
             }
             ps.setLong(2, id);
-            final int affected = ps.executeUpdate();
-            if (affected == 0) throw new RuntimeException("No world updated for id=" + id);
-            return getWorldById(id);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) throw new RuntimeException("No world updated for id=" + id);
+                return Optional.of(mapWorld(rs));
+            }
         } catch (SQLException e) {
             throw new RuntimeException("Error updating center_position_id for world id=" + id, e);
         }
@@ -325,6 +329,7 @@ public final class WorldsCrudManager {
                 UPDATE sb_worlds
                 SET center_position_id = ?
                 WHERE dimension_id = ?
+                RETURNING id, dimension_id, center_position_id
                 """;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -334,9 +339,10 @@ public final class WorldsCrudManager {
                 ps.setLong(1, newCenterPositionId);
             }
             ps.setString(2, dimensionId);
-            final int affected = ps.executeUpdate();
-            if (affected == 0) throw new RuntimeException("No world updated for dimension_id=" + dimensionId);
-            return getWorldByDimensionId(dimensionId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) throw new RuntimeException("No world updated for dimension_id=" + dimensionId);
+                return Optional.of(mapWorld(rs));
+            }
         } catch (SQLException e) {
             throw new RuntimeException("Error updating center_position_id for world dimension_id=" + dimensionId, e);
         }
@@ -351,16 +357,18 @@ public final class WorldsCrudManager {
      * @throws RuntimeException on SQL errors coming from jdbc.
      */
     public Optional<WorldDTO> deleteWorldById(long id) {
-        final Optional<WorldDTO> before = getWorldById(id);
-        if (before.isEmpty()) return Optional.empty();
-
-        final String sql = "DELETE FROM sb_worlds WHERE id = ?";
+        final String sql = """
+                DELETE FROM sb_worlds
+                WHERE id = ?
+                RETURNING id, dimension_id, center_position_id
+                """;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, id);
-            final int affected = ps.executeUpdate();
-            if (affected == 0) throw new RuntimeException("No world deleted for id=" + id);
-            return before;
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return Optional.empty();
+                return Optional.of(mapWorld(rs));
+            }
         } catch (SQLException e) {
             throw new RuntimeException("Error deleting world id=" + id, e);
         }
@@ -372,17 +380,21 @@ public final class WorldsCrudManager {
      * @throws RuntimeException on SQL errors coming from jdbc.
      */
     public void deleteWorldByDimensionId(@NotNull String dimensionId) {
-        if (getWorldByDimensionId(dimensionId).isPresent()){
+        if (getWorldByDimensionId(dimensionId).isEmpty()){
             throw new IllegalArgumentException("World with dimension_id=" + dimensionId + " does not exist");
         }
-        final String sql = "DELETE FROM sb_worlds WHERE dimension_id = ?";
+        final String sql = """
+                DELETE FROM sb_worlds
+                WHERE dimension_id = ?
+                RETURNING id, dimension_id, center_position_id
+                """;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, dimensionId);
-            ps.executeUpdate();
-            if (ps.getUpdateCount() == 0) throw new RuntimeException("No world deleted for dimension_id=" + dimensionId);
-            if (getWorldByDimensionId(dimensionId).isPresent()) {
-                throw new RuntimeException("World with dimension_id=" + dimensionId + " still exists after deletion");
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new RuntimeException("No world deleted for dimension_id=" + dimensionId);
+                }
             }
         } catch (SQLException e) {
             throw new RuntimeException("Error deleting world dimension_id=" + dimensionId, e);

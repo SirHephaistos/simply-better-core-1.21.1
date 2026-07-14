@@ -1,10 +1,12 @@
 package as.sirhephaistos.simplybetter.library;
 
-public record WarpDTO(Long id, String name, PositionDTO position, String createdAt, String createdBy) {
-    /**
-     * Creates a WarpPoint from explicit parameters and a PositionDTO
-     */
-    public WarpDTO {
-    }
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
+public record WarpDTO(
+        long id,
+        @NotNull String name,
+        @NotNull PositionDTO position,
+        @Nullable String createdBy,
+        @NotNull String createdAt) {
 }

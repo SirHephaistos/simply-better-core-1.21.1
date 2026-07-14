@@ -101,9 +101,10 @@ public final class AuditLogsCrudManager {
         final String sql = """
                 INSERT INTO sb_audit_logs (table_name, initiator, context_json, at)
                 VALUES (?, ?, ?, ?)
+                RETURNING id, table_name, initiator, context_json, at
                 """;
         try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, tableName);
             if (initiator != null) {
                 ps.setString(2, initiator);
@@ -115,13 +116,11 @@ public final class AuditLogsCrudManager {
                 ps.setNull(3, Types.VARCHAR);
             }
             ps.setString(4, at);
-            ps.executeUpdate();
-            try (ResultSet keys = ps.getGeneratedKeys()) {
-                if (!keys.next()) {
-                    throw new RuntimeException("Failed to insert audit log: no generated key returned");
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new RuntimeException("INSERT RETURNING produced no row for table=" + tableName);
                 }
-                final long id = keys.getLong(1);
-                return new AuditLogDTO(id, tableName, initiator, contextJson, at);
+                return mapAuditLog(rs);
             }
         } catch (SQLException e) {
             throw new RuntimeException("Error inserting audit log for table=" + tableName, e);
@@ -254,8 +253,8 @@ public final class AuditLogsCrudManager {
                 WHERE at >= ? AND at < ?
                 ORDER BY at ASC""";
 
-        if (limit ==1) {
-            // Append LIMIT clause if limit is non-negative
+        if (limit > 0) {
+            // Append LIMIT clause if limit is positive
             sql += " LIMIT ?";
         }
         final List<AuditLogDTO> out = new ArrayList<>();
@@ -263,7 +262,7 @@ public final class AuditLogsCrudManager {
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, fromInclusive);
             ps.setString(2, toExclusive);
-            if (limit == 1) {
+            if (limit > 0) {
                 ps.setInt(3, limit);
             }
             try (ResultSet rs = ps.executeQuery()) {
@@ -295,16 +294,18 @@ public final class AuditLogsCrudManager {
         if (getAuditLogById(id).isEmpty()) {
             throw new IllegalArgumentException("deleteAuditLogById: No audit log found for id=" + id);
         }
-        final String sql = "DELETE FROM sb_audit_logs WHERE id = ?";
+        final String sql = """
+                DELETE FROM sb_audit_logs
+                WHERE id = ?
+                RETURNING id, table_name, initiator, context_json, at
+                """;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, id);
-            ps.executeUpdate();
-            if (ps.getUpdateCount() == 0) {
-                throw new RuntimeException("deleteAuditLogById: affected 0 rows for id=" + id);
-            }
-            if (getAuditLogById(id).isPresent()) {
-                throw new RuntimeException("deleteAuditLogById: failed to delete for id=" + id);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new RuntimeException("deleteAuditLogById: affected 0 rows for id=" + id);
+                }
             }
         } catch (SQLException e) {
             throw new RuntimeException("Error deleting audit log id=" + id, e);

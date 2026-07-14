@@ -14,13 +14,13 @@ import java.util.Optional;
  * <h2>Create Methods</h2>
  * <ul>
  *     <li>{@link #createAccount}:</br>
- *         Create a new account for the given player UUID. And returns an {@link AccountDTO}.
+ *         Create a new account for the given {@code playerUuid} And returns an {@link AccountDTO}.
  *     </li>
  * </ul>
  * <h2>Read Methods</h2>
  * <ul>
  *     <li>{@link #getAccountByPlayerUuid}:</br>
- *         Get account by Player UUID. And return an {@link Optional} containing {@link AccountDTO} if found, empty otherwise.</li>
+ *         Get account {@code playerUuid}. And return an {@link Optional} containing {@link AccountDTO} if found, empty otherwise.</li>
  *     <li>{@link #getAllAccounts}:</br>
  *         Return a list of all accounts in the database. And  returns a {@link List} of {@link AccountDTO}.</li>
  *     <li>{@link #getAllAccountsPaged}:</br>
@@ -29,12 +29,12 @@ import java.util.Optional;
  * <h2>Update Methods</h2>
  * <ul>
  *     <li>{@link #updateAccount}:</br>
- *         Update account balance and updated_at by player UUID. And  returns the updated {@link AccountDTO}.</li>
+ *         Update account balance and updated_at by {@code playerUuid}. And  returns the updated {@link AccountDTO}.</li>
  * </ul>
  * <h2>Delete Methods</h2>
  * <ul>
  *     <li>{@link #deleteAccountByPlayerUuid}:</br>
- *     Delete account by Player UUID.</li>
+ *     Delete account by {@code playerUuid}.</li>
  * </ul>
  *
  *<h3>General Information</h3>
@@ -59,17 +59,18 @@ public final class AccountsCrudManager {
      * @throws IllegalArgumentException if rs is null.
      * @throws IllegalStateException if any non-nullable column is null.
      */
-    private static AccountDTO mapAccount(ResultSet rs) throws SQLException{
+    private static AccountDTO mapAccount(ResultSet rs) throws SQLException {
         if (rs == null) throw new IllegalArgumentException("rs is null");
-        if (rs.getString("a_player_uuid") == null)
-            throw new IllegalStateException("player_uuid is null");
-        if (rs.getString("a_balance") == null)
-            throw new IllegalStateException("balance is null");
-        if (rs.getString("a_updated_at") == null)
-            throw new IllegalStateException("updated_at is null");
+
         @NotNull final String playerUuid = rs.getString("a_player_uuid");
+        if (playerUuid == null) throw new IllegalStateException("player_uuid is null");
+
         final long balance = rs.getLong("a_balance");
+        if (rs.wasNull()) throw new IllegalStateException("balance is null");
+
         @NotNull final String updatedAt = rs.getString("a_updated_at");
+        if (updatedAt == null) throw new IllegalStateException("updated_at is null");
+
         return new AccountDTO(playerUuid, balance, updatedAt);
     }
 
@@ -93,22 +94,23 @@ public final class AccountsCrudManager {
         final String sql = """
                 INSERT INTO sb_accounts (player_uuid, balance, updated_at)
                 VALUES (?, ?, ?)
+                RETURNING
+                    player_uuid AS a_player_uuid,
+                    balance     AS a_balance,
+                    updated_at  AS a_updated_at
                 """;
-        String id;
         try (Connection c = db.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+             PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setString(1, playerUuid);
             ps.setLong(2, balance);
             ps.setString(3, updatedAt);
-            ps.executeUpdate();
-            try (ResultSet keys = ps.getGeneratedKeys()) {
-                if (!keys.next()) throw new RuntimeException("No generated key");
-                id = keys.getString(1);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) throw new RuntimeException("INSERT RETURNING produced no row for playerUuid=" + playerUuid);
+                return mapAccount(rs);
             }
         } catch (SQLException e) {
             throw new RuntimeException("Failed for playerUuid=" + playerUuid, e);
         }
-        return getAccountByPlayerUuid(id).orElseThrow(() -> new RuntimeException("Post-fetch missing playerUuid=" + id));
     }
     // -- Read
 
@@ -151,7 +153,7 @@ public final class AccountsCrudManager {
                     a.balance     AS a_balance,
                     a.updated_at  AS a_updated_at
                 FROM sb_accounts a
-                ORDER BY a.playerUuid
+                ORDER BY a.player_uuid
                 """;
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql);
@@ -179,7 +181,7 @@ public final class AccountsCrudManager {
                     a.balance     AS a_balance,
                     a.updated_at  AS a_updated_at
                 FROM sb_accounts a
-                ORDER BY a.playerUuid
+                ORDER BY a.player_uuid
                 LIMIT ? OFFSET ?
                 """;
         try (Connection c = db.getConnection();
@@ -210,17 +212,23 @@ public final class AccountsCrudManager {
         final String sql = """
                 UPDATE sb_accounts
                 SET balance = ?, updated_at = ?
-                WHERE playerUuid = ?
+                WHERE player_uuid = ?
+                RETURNING
+                    player_uuid AS a_player_uuid,
+                    balance     AS a_balance,
+                    updated_at  AS a_updated_at
                 """;
         try (Connection c = db.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setLong(1, balance);
             ps.setString(2, updatedAt);
-            final int upd = ps.executeUpdate();
-            if (upd == 0) throw new RuntimeException("Affected 0 rows for playerUuid=" + playerUuid);
+            ps.setString(3, playerUuid);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) throw new RuntimeException("Affected 0 rows for playerUuid=" + playerUuid);
+                return mapAccount(rs);
+            }
         } catch (SQLException e) {
             throw new RuntimeException("Failed for playerUuid=" + playerUuid, e);
         }
-        return getAccountByPlayerUuid(playerUuid).orElseThrow(() -> new RuntimeException("Post-fetch missing playerUuid=" + playerUuid));
     }
 
     // -- Delete
