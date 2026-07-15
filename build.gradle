@@ -11,11 +11,8 @@ base {
 }
 
 repositories {
-	// Add repositories to retrieve artifacts from in here.
-	// You should only use this when depending on other mods because
-	// Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
-	// See https://docs.gradle.org/current/userguide/declaring_repositories.html
-	// for more information about repositories.
+	// Local jars (proxymc DB gateway)
+	flatDir { dirs 'libs' }
 }
 
 loom {
@@ -41,10 +38,11 @@ dependencies {
     // add lombok
     compileOnly 'org.projectlombok:lombok:1.18.32'
     annotationProcessor 'org.projectlombok:lombok:1.18.32'
-    // add JDBC:PostgreSQL for database handling
-    include(implementation('org.postgresql:postgresql:42.7.5'))
-    // HikariCP connection pool
-    include(implementation('com.zaxxer:HikariCP:6.2.1'))
+    // Database access goes through the proxymc gateway mod (mTLS, per-role pools).
+    // proxymc is the single provider of HikariCP + pgJDBC on the server.
+    // Its api package is pure Java (no MC classes), so compileOnly against the
+    // jar is safe — at runtime the proxymc mod provides the classes.
+    compileOnly files('libs/proxymc-1.0.0.jar')
 
     //gson
     implementation 'com.google.code.gson:gson:2.10.1'

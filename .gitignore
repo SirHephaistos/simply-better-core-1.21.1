@@ -44,3 +44,7 @@ replay_*.log
 /src/main/java/as/sirhephaistos/simplybetter/library/allDTOs.txt
 /src/main/java/as/sirhephaistos/simplybetter/library/concat.py
 /src/main/resources/simplybetter/tablePresentation.md
+# local project notes (infra details) - never commit
+CLAUDE.md
+.claude/
+/simplybetter/
