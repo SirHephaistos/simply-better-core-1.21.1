@@ -58,6 +58,10 @@ public class SimplyBetterCoreServer implements DedicatedServerModInitializer {
         });
 
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            // A server that stopped without a clean shutdown leaves rows claiming to be online
+            // forever, and the web app reads that flag.
+            corePlayersRepository.markAllOffline();
+
             if (playersCrudManager.hasAnyPlayers() && !force) LOGGER.info("[{}] players found in database, ignoring usercache file", MOD_ID);
             else loadPlayersFromUserCache(server);
         });
@@ -112,6 +116,7 @@ public class SimplyBetterCoreServer implements DedicatedServerModInitializer {
             );
 
             playersCrudManager.upsertPlayer(updated);
+            corePlayersRepository.onLeave(player.getUUID());
             LOGGER.info("[{}] playtime updated: {}", MOD_ID, updated.playtimeSeconds());
         } catch (Exception e) {
             LOGGER.error("[{}] Failed to update playtime: {}", MOD_ID, e.getMessage(), e);
@@ -154,6 +159,11 @@ public class SimplyBetterCoreServer implements DedicatedServerModInitializer {
                 );
             }
             playersCrudManager.upsertPlayer(dto);
+
+            // The shared registry, written at the same moment: this is the first point at which
+            // the identity is known, which is why simply-better owns it rather than the web mod.
+            corePlayersRepository.onJoin(player.getUUID(), name);
+
             LOGGER.info("[{}] upserted player on join: {}", MOD_ID, name);
         } catch (Exception e) {
             LOGGER.error("[{}] Failed to upsert player on join: {}", MOD_ID, e.getMessage(), e);
@@ -235,6 +245,14 @@ public class SimplyBetterCoreServer implements DedicatedServerModInitializer {
         String expiresOn;
     }
 
+    /**
+     * The shared player registry, core.players -- not one of simply-better's own tables.
+     *
+     * <p>Every other mod on this database foreign-keys onto it, and nothing was writing it. See
+     * {@link as.sirhephaistos.simplybetter.core.db.CorePlayersRepository}.
+     */
+    @Getter private static CorePlayersRepository corePlayersRepository;
+
     @Getter private static AccountsCrudManager accountsCrudManager;
     @Getter private static AfksCrudManager afksCrudManager;
     @Getter private static AuditLogsCrudManager auditLogsCrudManager;
@@ -280,6 +298,7 @@ public class SimplyBetterCoreServer implements DedicatedServerModInitializer {
         mailsCrudManager = new MailsCrudManager(DB);
         mutesCrudManager = new MutesCrudManager(DB);
         playersCrudManager = new PlayersCrudManager(DB);
+        corePlayersRepository = new CorePlayersRepository(DB);
         positionsCrudManager = new PositionsCrudManager(DB);
         privateChatLogsCrudManager = new PrivateChatLogsCrudManager(DB);
         rtpSettingsCrudManager = new RtpSettingsCrudManager(DB);
